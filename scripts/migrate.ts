@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import dotenv from "dotenv";
-import { Pool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { migrate } from "drizzle-orm/neon-serverless/migrator";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
+import { migrate } from "drizzle-orm/neon-http/migrator";
 
 // Load .env.local first, then .env (existing values are not overridden).
 for (const file of [".env.local", ".env"]) {
@@ -18,10 +18,10 @@ async function main() {
     );
   }
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const drizzleClient = drizzle(pool);
+  // HTTP (SQL-over-HTTP) driver — the WebSocket driver hangs in this
+  // environment, see src/db/client.ts.
+  const drizzleClient = drizzle(neon(process.env.DATABASE_URL));
   await migrate(drizzleClient, { migrationsFolder: "drizzle" });
-  await pool.end();
   console.log("Migrations applied.");
 }
 

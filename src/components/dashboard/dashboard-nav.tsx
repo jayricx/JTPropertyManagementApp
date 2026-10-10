@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
@@ -33,8 +34,8 @@ export function DashboardNav() {
     <aside className="hidden w-64 flex-col border-r bg-muted/40 md:flex">
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-          <Building2 className="h-5 w-5" />
-          Property Manager
+          <Image src="/icon.svg" alt="" width={26} height={26} priority />
+          JT Property Management
         </Link>
       </div>
       <nav className="flex-1 space-y-1 p-4">

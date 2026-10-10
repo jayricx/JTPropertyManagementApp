@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="JT Property Management">
+  <defs>
+    <linearGradient id="badge" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e3a8a"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <!-- Badge -->
+  <rect width="64" height="64" rx="14" fill="url(#badge)"/>
+  <!-- Roofline -->
+  <path d="M13 30 L32 14 L51 30" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Chimney accent -->
+  <circle cx="45.5" cy="24" r="3" fill="#f59e0b"/>
+  <!-- JT monogram -->
+  <text x="32" y="53" text-anchor="middle" font-family="'Segoe UI Black', 'Arial Black', 'Segoe UI', Arial, sans-serif" font-size="25" font-weight="900" fill="#ffffff">JT</text>
+</svg>
