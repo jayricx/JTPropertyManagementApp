@@ -136,7 +136,7 @@ export default async function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/properties">
+            <Link href="/properties/new">
               <Button>Add your first property</Button>
             </Link>
           </CardContent>
