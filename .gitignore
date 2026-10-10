@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# Visual Studio / VS Code local caches
+.vs/
+.vscode/
+*.suo
+*.user
+
 # debug
 npm-debug.log*
 yarn-debug.log*
