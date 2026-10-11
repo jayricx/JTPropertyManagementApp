@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { maintenanceRequests, properties, tenants, units } from "@/db/schema";
+import { maintenanceRequests, tenants, units } from "@/db/schema";
+import { canAccessProperty } from "@/lib/access";
 import { maintenanceSchema, type MaintenanceFormParsed } from "@/lib/validations";
 
 /** `ok` lets dialog forms close themselves after a successful mutation. */
@@ -18,23 +19,17 @@ function toFormDataRecord(formData: FormData): Record<string, string> {
   return record;
 }
 
-/** Confirm the property is this user's and the unit belongs to it. */
+/** Confirm the property is accessible (owned or co-owned) and the unit is in it. */
 async function ownsTargets(
   userId: string,
   propertyId: string,
   unitId: string,
 ): Promise<boolean> {
+  if (!(await canAccessProperty(userId, propertyId))) return false;
   const rows = await db
     .select({ id: units.id })
     .from(units)
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(
-      and(
-        eq(units.id, unitId),
-        eq(units.propertyId, propertyId),
-        eq(properties.userId, userId),
-      ),
-    )
+    .where(and(eq(units.id, unitId), eq(units.propertyId, propertyId)))
     .limit(1);
   return rows.length > 0;
 }
@@ -112,17 +107,23 @@ export async function updateMaintenanceAction(
     return { error: "Missing request id." };
   }
 
+  // Requests on co-owned properties are visible to both partners, so update
+  // rights follow property access rather than who created the request.
   const [existing] = await db
-    .select({ id: maintenanceRequests.id, status: maintenanceRequests.status })
+    .select({
+      id: maintenanceRequests.id,
+      status: maintenanceRequests.status,
+      propertyId: maintenanceRequests.propertyId,
+    })
     .from(maintenanceRequests)
-    .where(
-      and(
-        eq(maintenanceRequests.id, requestId),
-        eq(maintenanceRequests.userId, session.user.id),
-      ),
-    )
+    .where(eq(maintenanceRequests.id, requestId))
     .limit(1);
-  if (!existing) return { error: "Request not found." };
+  if (
+    !existing ||
+    !(await canAccessProperty(session.user.id, existing.propertyId))
+  ) {
+    return { error: "Request not found." };
+  }
 
   const parsed = maintenanceSchema.safeParse(toFormDataRecord(formData));
   if (!parsed.success) {
@@ -175,16 +176,25 @@ export async function deleteMaintenanceAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  const deleted = await db
+  const [existing] = await db
+    .select({
+      id: maintenanceRequests.id,
+      propertyId: maintenanceRequests.propertyId,
+    })
+    .from(maintenanceRequests)
+    .where(eq(maintenanceRequests.id, requestId))
+    .limit(1);
+  if (
+    !existing ||
+    !(await canAccessProperty(session.user.id, existing.propertyId))
+  ) {
+    return { error: "Request not found." };
+  }
+
+  await db
     .delete(maintenanceRequests)
-    .where(
-      and(
-        eq(maintenanceRequests.id, requestId),
-        eq(maintenanceRequests.userId, session.user.id),
-      ),
-    )
+    .where(eq(maintenanceRequests.id, requestId))
     .returning({ id: maintenanceRequests.id });
-  if (!deleted.length) return { error: "Request not found." };
 
   revalidatePath("/maintenance");
   revalidatePath("/dashboard");

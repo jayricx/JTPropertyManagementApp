@@ -4,7 +4,14 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { PencilIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, properties, tenants, units } from "@/db/schema";
+import {
+  leases,
+  properties,
+  propertyCollaborators,
+  tenants,
+  units,
+  users,
+} from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,9 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CoOwnersCard } from "@/components/properties/co-owners-card";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { UnitFormDialog } from "@/components/properties/unit-form-dialog";
 import { UnitRowActions } from "@/components/properties/unit-row-actions";
+import { canAccessProperty } from "@/lib/access";
 import { formatCurrency, isUuid } from "@/lib/utils";
 import {
   propertyTypeLabels,
@@ -55,12 +64,38 @@ export default async function PropertyDetailPage({
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
 
+  // Access = owned by this user, or shared with them as co-owner.
   const [property] = await db
     .select()
     .from(properties)
-    .where(and(eq(properties.id, id), eq(properties.userId, userId)))
+    .where(eq(properties.id, id))
     .limit(1);
-  if (!property) notFound();
+  if (!property || !(await canAccessProperty(userId, id))) notFound();
+
+  const isOwner = property.userId === userId;
+
+  // Co-owner roster, plus the owner's name when the viewer is a co-owner.
+  const [coOwnerRows, ownerRows] = await Promise.all([
+    db
+      .select({
+        id: propertyCollaborators.id,
+        name: users.name,
+        email: users.email,
+        createdAt: propertyCollaborators.createdAt,
+      })
+      .from(propertyCollaborators)
+      .innerJoin(users, eq(propertyCollaborators.userId, users.id))
+      .where(eq(propertyCollaborators.propertyId, id))
+      .orderBy(asc(propertyCollaborators.createdAt)),
+    isOwner
+      ? Promise.resolve([])
+      : db
+          .select({ name: users.name, email: users.email })
+          .from(users)
+          .where(eq(users.id, property.userId))
+          .limit(1),
+  ]);
+  const ownerLabel = ownerRows[0]?.name ?? ownerRows[0]?.email ?? "the owner";
 
   const unitRows = await db
     .select()
@@ -121,6 +156,7 @@ export default async function PropertyDetailPage({
             <h1 className="text-2xl font-bold tracking-tight">
               {property.name}
             </h1>
+            {!isOwner && <Badge variant="outline">Co-owned</Badge>}
             <Badge variant="secondary" className="capitalize">
               {propertyTypeLabels[property.type]}
             </Badge>
@@ -137,10 +173,12 @@ export default async function PropertyDetailPage({
               </Link>
             }
           />
-          <DeletePropertyButton
-            propertyId={property.id}
-            propertyName={property.name}
-          />
+          {isOwner && (
+            <DeletePropertyButton
+              propertyId={property.id}
+              propertyName={property.name}
+            />
+          )}
         </div>
       </div>
 
@@ -215,6 +253,13 @@ export default async function PropertyDetailPage({
           )}
         </CardContent>
       </Card>
+
+      <CoOwnersCard
+        propertyId={property.id}
+        isOwner={isOwner}
+        ownerLabel={isOwner ? undefined : ownerLabel}
+        coOwners={coOwnerRows}
+      />
 
       {property.notes && (
         <Card>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { count, desc, eq, sql } from "drizzle-orm";
+import { count, desc, eq, inArray, sql } from "drizzle-orm";
 import { PlusIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { accessiblePropertyIds } from "@/lib/access";
 import { formatCurrency } from "@/lib/utils";
 import { propertyTypeLabels } from "@/lib/validations";
 
@@ -22,25 +23,31 @@ export default async function PropertiesPage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
-  const rows = await db
-    .select({
-      id: properties.id,
-      name: properties.name,
-      address: properties.address,
-      city: properties.city,
-      state: properties.state,
-      country: properties.country,
-      type: properties.type,
-      unitCount: count(units.id),
-      // Postgres aggregate FILTER — occupied units only.
-      occupiedCount: sql<string>`count(${units.id}) filter (where ${units.status} = 'occupied')`,
-      rentRoll: sql<string>`coalesce(sum(${units.rentAmount}), 0)`,
-    })
-    .from(properties)
-    .leftJoin(units, eq(units.propertyId, properties.id))
-    .where(eq(properties.userId, userId))
-    .groupBy(properties.id)
-    .orderBy(desc(properties.createdAt));
+  // Owned properties plus properties shared with this user as co-owner.
+  const accessibleIds = await accessiblePropertyIds(userId);
+
+  const rows = accessibleIds.length
+    ? await db
+        .select({
+          id: properties.id,
+          name: properties.name,
+          address: properties.address,
+          city: properties.city,
+          state: properties.state,
+          country: properties.country,
+          type: properties.type,
+          ownerId: properties.userId,
+          unitCount: count(units.id),
+          // Postgres aggregate FILTER — occupied units only.
+          occupiedCount: sql<string>`count(${units.id}) filter (where ${units.status} = 'occupied')`,
+          rentRoll: sql<string>`coalesce(sum(${units.rentAmount}), 0)`,
+        })
+        .from(properties)
+        .leftJoin(units, eq(units.propertyId, properties.id))
+        .where(inArray(properties.id, accessibleIds))
+        .groupBy(properties.id)
+        .orderBy(desc(properties.createdAt))
+    : [];
 
   return (
     <div className="space-y-6">
@@ -82,6 +89,7 @@ export default async function PropertiesPage() {
             const occupied = Number(p.occupiedCount ?? 0);
             const occupancy =
               p.unitCount > 0 ? Math.round((occupied / p.unitCount) * 100) : 0;
+            const isCoOwned = p.ownerId !== userId;
 
             return (
               <Link key={p.id} href={`/properties/${p.id}`} className="group">
@@ -91,9 +99,14 @@ export default async function PropertiesPage() {
                       <CardTitle className="text-base leading-snug">
                         {p.name}
                       </CardTitle>
-                      <Badge variant="secondary" className="capitalize">
-                        {propertyTypeLabels[p.type]}
-                      </Badge>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {isCoOwned && (
+                          <Badge variant="outline">Co-owned</Badge>
+                        )}
+                        <Badge variant="secondary" className="capitalize">
+                          {propertyTypeLabels[p.type]}
+                        </Badge>
+                      </div>
                     </div>
                     <CardDescription className="line-clamp-2">
                       {addressLine}

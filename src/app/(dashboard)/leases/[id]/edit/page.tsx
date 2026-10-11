@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, properties, tenants, units } from "@/db/schema";
 import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form";
+import { accessiblePropertyIds, canAccessUnit } from "@/lib/access";
 import { isUuid } from "@/lib/utils";
 import type { LeaseFormValues } from "@/lib/validations";
 
@@ -39,11 +40,12 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
       notes: leases.notes,
     })
     .from(leases)
-    .innerJoin(units, eq(leases.unitId, units.id))
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(leases.id, id), eq(properties.userId, userId)))
+    .where(eq(leases.id, id))
     .limit(1);
-  if (!lease) notFound();
+  // The lease's unit must sit on a property this user can access.
+  if (!lease || !(await canAccessUnit(userId, lease.unitId))) notFound();
+
+  const accessibleIds = await accessiblePropertyIds(userId);
 
   const [tenantRows, unitRows] = await Promise.all([
     db
@@ -64,7 +66,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
       })
       .from(units)
       .innerJoin(properties, eq(units.propertyId, properties.id))
-      .where(eq(properties.userId, userId))
+      .where(inArray(properties.id, accessibleIds))
       .orderBy(asc(properties.name), asc(units.name)),
   ]);
 

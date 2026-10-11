@@ -1,8 +1,15 @@
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { and, count, eq, gte, inArray, sum } from "drizzle-orm";
+import { and, count, eq, gte, inArray, or, sum } from "drizzle-orm";
 import { Building2, KeyRound, Wallet, Wrench } from "lucide-react";
-import { maintenanceRequests, payments, properties, units } from "@/db/schema";
+import {
+  leases,
+  maintenanceRequests,
+  payments,
+  properties,
+  units,
+} from "@/db/schema";
+import { accessiblePropertyIds } from "@/lib/access";
 import { formatCurrency } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Button } from "@/components/ui/button";
@@ -30,36 +37,51 @@ async function getStats(userId: string): Promise<DashboardStats> {
     1,
   );
 
+  // Every KPI covers the whole portfolio the user can see: owned properties
+  // plus properties shared with them as co-owner.
+  const propertyIds = await accessiblePropertyIds(userId);
+
   const [totalProperties, totalUnits, occupiedUnits, incomeResult, openRequests] =
     await Promise.all([
       db
         .select({ value: count() })
         .from(properties)
-        .where(eq(properties.userId, userId)),
+        .where(inArray(properties.id, propertyIds)),
       db
         .select({ value: count() })
         .from(units)
         .innerJoin(properties, eq(units.propertyId, properties.id))
-        .where(eq(properties.userId, userId)),
+        .where(inArray(properties.id, propertyIds)),
       db
         .select({ value: count() })
         .from(units)
         .innerJoin(properties, eq(units.propertyId, properties.id))
         .where(
-          and(eq(properties.userId, userId), eq(units.status, "occupied")),
+          and(inArray(properties.id, propertyIds), eq(units.status, "occupied")),
         ),
+      // Own payments (including unassigned ones) plus anything recorded on
+      // an accessible property by a co-owner.
       db
         .select({ value: sum(payments.amount) })
         .from(payments)
+        .leftJoin(leases, eq(payments.leaseId, leases.id))
+        .leftJoin(units, eq(leases.unitId, units.id))
+        .leftJoin(properties, eq(units.propertyId, properties.id))
         .where(
-          and(eq(payments.userId, userId), gte(payments.paidDate, firstOfMonth)),
+          and(
+            or(
+              eq(payments.userId, userId),
+              inArray(properties.id, propertyIds),
+            ),
+            gte(payments.paidDate, firstOfMonth),
+          ),
         ),
       db
         .select({ value: count() })
         .from(maintenanceRequests)
         .where(
           and(
-            eq(maintenanceRequests.userId, userId),
+            inArray(maintenanceRequests.propertyId, propertyIds),
             inArray(maintenanceRequests.status, ["new", "in_progress"]),
           ),
         ),

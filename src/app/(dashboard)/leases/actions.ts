@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, properties, tenants, units } from "@/db/schema";
+import { leases, tenants, units } from "@/db/schema";
+import { canAccessUnit } from "@/lib/access";
 import { leaseSchema, type LeaseFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
@@ -48,16 +49,7 @@ export async function syncUnitStatus(unitId: string): Promise<void> {
   }
 }
 
-/** Confirm the unit belongs to a property owned by this user. */
-async function ownsUnit(userId: string, unitId: string) {
-  const rows = await db
-    .select({ id: units.id })
-    .from(units)
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(units.id, unitId), eq(properties.userId, userId)))
-    .limit(1);
-  return rows.length > 0;
-}
+// Unit access (owned or co-owned) is checked via `canAccessUnit`.
 
 async function ownsTenant(userId: string, tenantId: string) {
   const rows = await db
@@ -116,7 +108,7 @@ export async function createLeaseAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid lease data." };
   }
 
-  if (!(await ownsUnit(session.user.id, parsed.data.unitId))) {
+  if (!(await canAccessUnit(session.user.id, parsed.data.unitId))) {
     return { error: "Unit not found." };
   }
   if (!(await ownsTenant(session.user.id, parsed.data.tenantId))) {
@@ -148,23 +140,23 @@ export async function updateLeaseAction(
     return { error: "Missing lease id." };
   }
 
-  // Confirm the lease's current unit belongs to a property owned by this
-  // user before touching anything.
+  // Confirm the lease's unit is on a property this user can access
+  // (owned or co-owned) before touching anything.
   const owned = await db
     .select({ id: leases.id, unitId: leases.unitId, endDate: leases.endDate })
     .from(leases)
-    .innerJoin(units, eq(leases.unitId, units.id))
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(leases.id, leaseId), eq(properties.userId, session.user.id)))
+    .where(eq(leases.id, leaseId))
     .limit(1);
-  if (!owned.length) return { error: "Lease not found." };
+  if (!owned.length || !(await canAccessUnit(session.user.id, owned[0].unitId))) {
+    return { error: "Lease not found." };
+  }
 
   const parsed = leaseSchema.safeParse(toFormDataRecord(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid lease data." };
   }
 
-  if (!(await ownsUnit(session.user.id, parsed.data.unitId))) {
+  if (!(await canAccessUnit(session.user.id, parsed.data.unitId))) {
     return { error: "Unit not found." };
   }
   if (!(await ownsTenant(session.user.id, parsed.data.tenantId))) {
@@ -212,11 +204,14 @@ export async function deleteLeaseAction(
   const owned = await db
     .select({ id: leases.id, unitId: leases.unitId })
     .from(leases)
-    .innerJoin(units, eq(leases.unitId, units.id))
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(leases.id, leaseId), eq(properties.userId, session.user.id)))
+    .where(eq(leases.id, leaseId))
     .limit(1);
-  if (!owned.length) return { error: "Lease not found." };
+  if (
+    !owned.length ||
+    !(await canAccessUnit(session.user.id, owned[0].unitId))
+  ) {
+    return { error: "Lease not found." };
+  }
 
   await db.delete(leases).where(eq(leases.id, leaseId));
   await syncUnitStatus(owned[0].unitId);

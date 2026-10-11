@@ -124,6 +124,36 @@ export const properties = pgTable(
   (t) => [index("properties_user_id_idx").on(t.userId)],
 );
 
+// ---------------------------------------------------------------------------
+// Co-ownership — a property can be shared with other users, who get full
+// manage access to it. The role column is ready for read-only "viewer"
+// sharing later.
+// ---------------------------------------------------------------------------
+
+export const collaboratorRoleEnum = pgEnum("collaborator_role", ["co_owner"]);
+
+export const propertyCollaborators = pgTable(
+  "property_collaborators",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    propertyId: uuid("property_id")
+      .notNull()
+      .references(() => properties.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: collaboratorRoleEnum("role").default("co_owner").notNull(),
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("property_collaborators_property_user_key").on(t.propertyId, t.userId),
+    index("property_collaborators_user_id_idx").on(t.userId),
+  ],
+);
+
 export const unitStatusEnum = pgEnum("unit_status", [
   "vacant",
   "occupied",

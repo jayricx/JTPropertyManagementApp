@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { PlusIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DeleteLeaseButton } from "@/components/leases/delete-lease-button";
+import { accessiblePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { leaseStatusLabels, type LeaseStatus } from "@/lib/validations";
 
@@ -38,6 +39,9 @@ export default async function LeasesPage() {
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
+
+  // Leases on owned + co-owned properties are visible.
+  const accessibleIds = await accessiblePropertyIds(userId);
 
   const rows = await db
     .select({
@@ -57,7 +61,7 @@ export default async function LeasesPage() {
     .innerJoin(tenants, eq(leases.tenantId, tenants.id))
     .innerJoin(units, eq(leases.unitId, units.id))
     .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(eq(properties.userId, userId))
+    .where(inArray(properties.id, accessibleIds))
     // Active first, then upcoming, then ended — newest start within each.
     .orderBy(
       sql`case ${leases.status} when 'active' then 0 when 'upcoming' then 1 else 2 end`,

@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray, or } from "drizzle-orm";
 import { Coins, Receipt, Wallet } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
@@ -24,6 +24,7 @@ import { ExpenseFormDialog } from "@/components/finance/expense-form-dialog";
 import { ExpenseRowActions } from "@/components/finance/expense-row-actions";
 import { PaymentFormDialog } from "@/components/finance/payment-form-dialog";
 import { PaymentRowActions } from "@/components/finance/payment-row-actions";
+import { accessiblePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   expenseCategoryLabels,
@@ -43,6 +44,10 @@ export default async function FinancePage() {
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
+
+  // Owned properties plus co-owned ones: a co-owner sees their own records
+  // and everything booked to properties shared with them.
+  const accessibleIds = await accessiblePropertyIds(userId);
 
   const [paymentRows, expenseRows, leaseRows, propertyRows, unitRows] =
     await Promise.all([
@@ -66,7 +71,12 @@ export default async function FinancePage() {
         .leftJoin(tenants, eq(leases.tenantId, tenants.id))
         .leftJoin(units, eq(leases.unitId, units.id))
         .leftJoin(properties, eq(units.propertyId, properties.id))
-        .where(eq(payments.userId, userId))
+        .where(
+          or(
+            eq(payments.userId, userId),
+            inArray(properties.id, accessibleIds),
+          ),
+        )
         .orderBy(desc(payments.paidDate), desc(payments.createdAt)),
       db
         .select({
@@ -84,7 +94,12 @@ export default async function FinancePage() {
         .from(expenses)
         .leftJoin(properties, eq(expenses.propertyId, properties.id))
         .leftJoin(units, eq(expenses.unitId, units.id))
-        .where(eq(expenses.userId, userId))
+        .where(
+          or(
+            eq(expenses.userId, userId),
+            inArray(expenses.propertyId, accessibleIds),
+          ),
+        )
         .orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
       db
         .select({
@@ -98,18 +113,18 @@ export default async function FinancePage() {
         .innerJoin(tenants, eq(leases.tenantId, tenants.id))
         .innerJoin(units, eq(leases.unitId, units.id))
         .innerJoin(properties, eq(units.propertyId, properties.id))
-        .where(eq(properties.userId, userId))
+        .where(inArray(properties.id, accessibleIds))
         .orderBy(asc(properties.name), asc(units.name)),
       db
         .select({ id: properties.id, name: properties.name })
         .from(properties)
-        .where(eq(properties.userId, userId))
+        .where(inArray(properties.id, accessibleIds))
         .orderBy(asc(properties.name)),
       db
         .select({ id: units.id, propertyId: units.propertyId, name: units.name })
         .from(units)
         .innerJoin(properties, eq(units.propertyId, properties.id))
-        .where(eq(properties.userId, userId))
+        .where(inArray(properties.id, accessibleIds))
         .orderBy(asc(properties.name), asc(units.name)),
     ]);
 

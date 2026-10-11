@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { properties, tenants, units } from "@/db/schema";
@@ -12,11 +12,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form";
+import { accessiblePropertyIds } from "@/lib/access";
 
 export default async function NewLeasePage() {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
+
+  // Units on owned + co-owned properties can receive new leases.
+  const accessibleIds = await accessiblePropertyIds(userId);
 
   const [tenantRows, unitRows] = await Promise.all([
     db
@@ -37,7 +41,7 @@ export default async function NewLeasePage() {
       })
       .from(units)
       .innerJoin(properties, eq(units.propertyId, properties.id))
-      .where(eq(properties.userId, userId))
+      .where(inArray(properties.id, accessibleIds))
       .orderBy(asc(properties.name), asc(units.name)),
   ]);
 

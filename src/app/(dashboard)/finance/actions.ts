@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { expenses, leases, payments, properties, units } from "@/db/schema";
+import { expenses, payments, units } from "@/db/schema";
+import { canAccessLease, canAccessProperty } from "@/lib/access";
 import {
   expenseSchema,
   paymentSchema,
@@ -38,16 +39,23 @@ function revalidateFinancePaths() {
 // Payments
 // ---------------------------------------------------------------------------
 
-/** A payment may reference a lease — confirm it belongs to this user. */
-async function ownsLease(userId: string, leaseId: string) {
+// Lease access (owned or co-owned property) is checked via `canAccessLease`.
+
+/**
+ * A payment may be edited/deleted by its creator, or by a co-owner of the
+ * property its lease belongs to. Unassigned payments stay creator-only.
+ */
+async function canModifyPayment(userId: string, paymentId: string) {
   const rows = await db
-    .select({ id: leases.id })
-    .from(leases)
-    .innerJoin(units, eq(leases.unitId, units.id))
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(leases.id, leaseId), eq(properties.userId, userId)))
+    .select({ id: payments.id, userId: payments.userId, leaseId: payments.leaseId })
+    .from(payments)
+    .where(eq(payments.id, paymentId))
     .limit(1);
-  return rows.length > 0;
+  if (!rows.length) return false;
+  if (rows[0].userId === userId) return true;
+  return rows[0].leaseId
+    ? canAccessLease(userId, rows[0].leaseId)
+    : Promise.resolve(false);
 }
 
 function paymentDbValues(data: PaymentFormParsed) {
@@ -73,7 +81,10 @@ export async function createPaymentAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid payment data." };
   }
 
-  if (parsed.data.leaseId && !(await ownsLease(session.user.id, parsed.data.leaseId))) {
+  if (
+    parsed.data.leaseId &&
+    !(await canAccessLease(session.user.id, parsed.data.leaseId))
+  ) {
     return { error: "Lease not found." };
   }
 
@@ -102,14 +113,21 @@ export async function updatePaymentAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid payment data." };
   }
 
-  if (parsed.data.leaseId && !(await ownsLease(session.user.id, parsed.data.leaseId))) {
+  if (
+    parsed.data.leaseId &&
+    !(await canAccessLease(session.user.id, parsed.data.leaseId))
+  ) {
     return { error: "Lease not found." };
+  }
+
+  if (!(await canModifyPayment(session.user.id, paymentId))) {
+    return { error: "Payment not found." };
   }
 
   const updated = await db
     .update(payments)
     .set(paymentDbValues(parsed.data))
-    .where(and(eq(payments.id, paymentId), eq(payments.userId, session.user.id)))
+    .where(eq(payments.id, paymentId))
     .returning({ id: payments.id });
   if (!updated.length) return { error: "Payment not found." };
 
@@ -123,11 +141,14 @@ export async function deletePaymentAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  const deleted = await db
+  if (!(await canModifyPayment(session.user.id, paymentId))) {
+    return { error: "Payment not found." };
+  }
+
+  await db
     .delete(payments)
-    .where(and(eq(payments.id, paymentId), eq(payments.userId, session.user.id)))
+    .where(eq(payments.id, paymentId))
     .returning({ id: payments.id });
-  if (!deleted.length) return { error: "Payment not found." };
 
   revalidateFinancePaths();
   return {};
@@ -137,33 +158,43 @@ export async function deletePaymentAction(
 // Expenses
 // ---------------------------------------------------------------------------
 
-/** Confirm the property (and, if given, the unit within it) is this user's. */
+/** Confirm the property (and, if given, the unit within it) is accessible. */
 async function ownsExpenseTargets(
   userId: string,
   propertyId: string,
   unitId?: string,
 ) {
-  const propertyRows = await db
-    .select({ id: properties.id })
-    .from(properties)
-    .where(and(eq(properties.id, propertyId), eq(properties.userId, userId)))
-    .limit(1);
-  if (!propertyRows.length) return false;
+  if (!(await canAccessProperty(userId, propertyId))) return false;
   if (!unitId) return true;
 
+  // The unit must belong to the same property the expense is booked to.
   const unitRows = await db
     .select({ id: units.id })
     .from(units)
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(
-      and(
-        eq(units.id, unitId),
-        eq(units.propertyId, propertyId),
-        eq(properties.userId, userId),
-      ),
-    )
+    .where(and(eq(units.id, unitId), eq(units.propertyId, propertyId)))
     .limit(1);
   return unitRows.length > 0;
+}
+
+/**
+ * An expense may be edited/deleted by its creator, or by anyone with access
+ * to the property it's booked to (i.e. a co-owner).
+ */
+async function canModifyExpense(userId: string, expenseId: string) {
+  const rows = await db
+    .select({
+      id: expenses.id,
+      userId: expenses.userId,
+      propertyId: expenses.propertyId,
+    })
+    .from(expenses)
+    .where(eq(expenses.id, expenseId))
+    .limit(1);
+  if (!rows.length) return false;
+  if (rows[0].userId === userId) return true;
+  return rows[0].propertyId
+    ? canAccessProperty(userId, rows[0].propertyId)
+    : Promise.resolve(false);
 }
 
 function expenseDbValues(data: ExpenseFormParsed) {
@@ -235,10 +266,14 @@ export async function updateExpenseAction(
     return { error: "Property or unit not found." };
   }
 
+  if (!(await canModifyExpense(session.user.id, expenseId))) {
+    return { error: "Expense not found." };
+  }
+
   const updated = await db
     .update(expenses)
     .set(expenseDbValues(parsed.data))
-    .where(and(eq(expenses.id, expenseId), eq(expenses.userId, session.user.id)))
+    .where(eq(expenses.id, expenseId))
     .returning({ id: expenses.id });
   if (!updated.length) return { error: "Expense not found." };
 
@@ -252,11 +287,14 @@ export async function deleteExpenseAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  const deleted = await db
+  if (!(await canModifyExpense(session.user.id, expenseId))) {
+    return { error: "Expense not found." };
+  }
+
+  await db
     .delete(expenses)
-    .where(and(eq(expenses.id, expenseId), eq(expenses.userId, session.user.id)))
+    .where(eq(expenses.id, expenseId))
     .returning({ id: expenses.id });
-  if (!deleted.length) return { error: "Expense not found." };
 
   revalidateFinancePaths();
   return {};

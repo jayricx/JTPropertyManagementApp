@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { PlusIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, tenants } from "@/db/schema";
+import { leases, tenants, units } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,12 +22,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DeleteTenantButton } from "@/components/tenants/delete-tenant-button";
+import { accessiblePropertyIds } from "@/lib/access";
 
 export default async function TenantsPage() {
   const session = await auth();
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
+
+  // Tenants on properties shared with this user (as co-owner) are visible
+  // read-only; a tenant record itself stays with whoever created it.
+  const accessibleIds = await accessiblePropertyIds(userId);
+  const sharedTenantIds = accessibleIds.length
+    ? (
+        await db
+          .selectDistinct({ tenantId: leases.tenantId })
+          .from(leases)
+          .innerJoin(units, eq(leases.unitId, units.id))
+          .where(inArray(units.propertyId, accessibleIds))
+      ).map((r) => r.tenantId)
+    : [];
 
   const rows = await db
     .select({
@@ -36,12 +50,15 @@ export default async function TenantsPage() {
       lastName: tenants.lastName,
       email: tenants.email,
       phone: tenants.phone,
+      owned: eq(tenants.userId, userId),
       // Postgres aggregate FILTER — active leases only.
       activeLeases: sql<number>`count(${leases.id}) filter (where ${leases.status} = 'active')`,
     })
     .from(tenants)
     .leftJoin(leases, eq(leases.tenantId, tenants.id))
-    .where(eq(tenants.userId, userId))
+    .where(
+      or(eq(tenants.userId, userId), inArray(tenants.id, sharedTenantIds)),
+    )
     .groupBy(tenants.id)
     .orderBy(desc(tenants.createdAt));
 
@@ -109,21 +126,27 @@ export default async function TenantsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          render={
-                            <Link href={`/tenants/${t.id}/edit`}>
-                              Edit
-                            </Link>
-                          }
-                        />
-                        <DeleteTenantButton
-                          tenantId={t.id}
-                          tenantName={`${t.firstName} ${t.lastName}`}
-                        />
-                      </div>
+                      {t.owned ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            render={
+                              <Link href={`/tenants/${t.id}/edit`}>
+                                Edit
+                              </Link>
+                            }
+                          />
+                          <DeleteTenantButton
+                            tenantId={t.id}
+                            tenantName={`${t.firstName} ${t.lastName}`}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-right text-xs text-muted-foreground">
+                          Co-owner&rsquo;s tenant
+                        </span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

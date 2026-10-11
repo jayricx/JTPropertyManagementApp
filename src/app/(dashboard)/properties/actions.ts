@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { properties, units } from "@/db/schema";
+import { properties, propertyCollaborators, units, users } from "@/db/schema";
+import { canAccessProperty, isPropertyOwner } from "@/lib/access";
 import { propertySchema, unitSchema, type UnitFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
@@ -58,10 +59,15 @@ export async function updatePropertyAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid property data." };
   }
 
+  // Co-owners may edit the property details.
+  if (!(await canAccessProperty(session.user.id, id))) {
+    return { error: "Property not found." };
+  }
+
   const updated = await db
     .update(properties)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(and(eq(properties.id, id), eq(properties.userId, session.user.id)))
+    .where(eq(properties.id, id))
     .returning({ id: properties.id });
   if (!updated.length) return { error: "Property not found." };
 
@@ -76,9 +82,17 @@ export async function deletePropertyAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
+  // Deleting cascades to units, leases, and requests — owner only.
+  if (!(await canAccessProperty(session.user.id, id))) {
+    return { error: "Property not found." };
+  }
+  if (!(await isPropertyOwner(session.user.id, id))) {
+    return { error: "Only the property owner can delete this property." };
+  }
+
   const deleted = await db
     .delete(properties)
-    .where(and(eq(properties.id, id), eq(properties.userId, session.user.id)))
+    .where(eq(properties.id, id))
     .returning({ id: properties.id });
   if (!deleted.length) return { error: "Property not found." };
 
@@ -87,17 +101,88 @@ export async function deletePropertyAction(
 }
 
 // ---------------------------------------------------------------------------
-// Units
+// Co-owners — sharing is managed by the property owner only.
 // ---------------------------------------------------------------------------
 
-async function ownsProperty(userId: string, propertyId: string) {
-  const rows = await db
-    .select({ id: properties.id })
-    .from(properties)
-    .where(and(eq(properties.id, propertyId), eq(properties.userId, userId)))
+export async function addCoOwnerAction(
+  propertyId: string,
+  email: string,
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  if (!(await isPropertyOwner(session.user.id, propertyId))) {
+    return { error: "Only the property owner can manage co-owners." };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return { error: "Enter an email address." };
+
+  const target = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(sql`lower(${users.email})`, normalizedEmail))
     .limit(1);
-  return rows.length > 0;
+  if (!target.length) {
+    return {
+      error: "No account with that email. Ask them to register first.",
+    };
+  }
+  if (target[0].id === session.user.id) {
+    return { error: "You already own this property." };
+  }
+
+  const existing = await db
+    .select({ id: propertyCollaborators.id })
+    .from(propertyCollaborators)
+    .where(
+      and(
+        eq(propertyCollaborators.propertyId, propertyId),
+        eq(propertyCollaborators.userId, target[0].id),
+      ),
+    )
+    .limit(1);
+  if (existing.length) return { error: "That user is already a co-owner." };
+
+  await db.insert(propertyCollaborators).values({
+    propertyId,
+    userId: target[0].id,
+    addedBy: session.user.id,
+  });
+
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${propertyId}`);
+  return {};
 }
+
+export async function removeCoOwnerAction(
+  propertyId: string,
+  collaboratorId: string,
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  if (!(await isPropertyOwner(session.user.id, propertyId))) {
+    return { error: "Only the property owner can manage co-owners." };
+  }
+
+  await db
+    .delete(propertyCollaborators)
+    .where(
+      and(
+        eq(propertyCollaborators.id, collaboratorId),
+        eq(propertyCollaborators.propertyId, propertyId),
+      ),
+    );
+
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${propertyId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// Units
+// ---------------------------------------------------------------------------
 
 // Drizzle's numeric columns map to strings by default, so stringify the
 // parsed decimal amounts before writing them.
@@ -126,7 +211,7 @@ export async function createUnitAction(
   if (typeof propertyId !== "string" || !propertyId) {
     return { error: "Missing property id." };
   }
-  if (!(await ownsProperty(session.user.id, propertyId))) {
+  if (!(await canAccessProperty(session.user.id, propertyId))) {
     return { error: "Property not found." };
   }
 
@@ -151,14 +236,19 @@ export async function updateUnitAction(
   const unitId = formData.get("unitId");
   if (typeof unitId !== "string" || !unitId) return { error: "Missing unit id." };
 
-  // Confirm the unit belongs to a property owned by this user.
+  // Confirm the unit belongs to a property this user can access
+  // (owned or co-owned) before updating.
   const owned = await db
     .select({ id: units.id, propertyId: units.propertyId })
     .from(units)
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(units.id, unitId), eq(properties.userId, session.user.id)))
+    .where(eq(units.id, unitId))
     .limit(1);
-  if (!owned.length) return { error: "Unit not found." };
+  if (
+    !owned.length ||
+    !(await canAccessProperty(session.user.id, owned[0].propertyId))
+  ) {
+    return { error: "Unit not found." };
+  }
 
   const parsed = unitSchema.safeParse(toFormDataRecord(formData));
   if (!parsed.success) {
@@ -180,14 +270,19 @@ export async function deleteUnitAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  // Confirm the unit belongs to a property owned by this user before deleting.
+  // Confirm the unit belongs to a property this user can access
+  // (owned or co-owned) before deleting.
   const owned = await db
     .select({ id: units.id, propertyId: units.propertyId })
     .from(units)
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(units.id, unitId), eq(properties.userId, session.user.id)))
+    .where(eq(units.id, unitId))
     .limit(1);
-  if (!owned.length) return { error: "Unit not found." };
+  if (
+    !owned.length ||
+    !(await canAccessProperty(session.user.id, owned[0].propertyId))
+  ) {
+    return { error: "Unit not found." };
+  }
 
   await db.delete(units).where(eq(units.id, unitId));
 

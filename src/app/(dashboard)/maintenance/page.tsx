@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { maintenanceRequests, properties, tenants, units } from "@/db/schema";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { MaintenanceFormDialog } from "@/components/maintenance/maintenance-form-dialog";
 import { MaintenanceRowActions } from "@/components/maintenance/maintenance-row-actions";
+import { accessiblePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   maintenancePriorityLabels,
@@ -54,6 +55,10 @@ export default async function MaintenancePage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
+  // Requests are scoped to accessible properties (owned + co-owned), so
+  // both partners see everything filed on a shared property.
+  const accessibleIds = await accessiblePropertyIds(userId);
+
   const [requestRows, propertyRows, unitRows, tenantRows] = await Promise.all([
     db
       .select({
@@ -76,7 +81,7 @@ export default async function MaintenancePage() {
       .innerJoin(properties, eq(maintenanceRequests.propertyId, properties.id))
       .innerJoin(units, eq(maintenanceRequests.unitId, units.id))
       .leftJoin(tenants, eq(maintenanceRequests.tenantId, tenants.id))
-      .where(eq(maintenanceRequests.userId, userId))
+      .where(inArray(maintenanceRequests.propertyId, accessibleIds))
       // Open requests first, then resolved, then cancelled — newest first.
       .orderBy(
         sql`case ${maintenanceRequests.status} when 'new' then 0 when 'in_progress' then 1 when 'resolved' then 2 else 3 end`,
@@ -86,13 +91,13 @@ export default async function MaintenancePage() {
     db
       .select({ id: properties.id, name: properties.name })
       .from(properties)
-      .where(eq(properties.userId, userId))
+      .where(inArray(properties.id, accessibleIds))
       .orderBy(asc(properties.name)),
     db
       .select({ id: units.id, propertyId: units.propertyId, name: units.name })
       .from(units)
       .innerJoin(properties, eq(units.propertyId, properties.id))
-      .where(eq(properties.userId, userId))
+      .where(inArray(properties.id, accessibleIds))
       .orderBy(asc(properties.name), asc(units.name)),
     db
       .select({
