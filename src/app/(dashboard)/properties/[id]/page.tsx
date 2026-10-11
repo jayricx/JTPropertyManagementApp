@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { PencilIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { properties, units } from "@/db/schema";
+import { leases, properties, tenants, units } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +67,20 @@ export default async function PropertyDetailPage({
     .from(units)
     .where(eq(units.propertyId, id))
     .orderBy(asc(units.name));
+
+  // Current tenant for each unit with an active lease.
+  const activeLeaseRows = await db
+    .select({
+      unitId: leases.unitId,
+      tenantName: sql<string>`concat(${tenants.firstName}, ' ', ${tenants.lastName})`,
+    })
+    .from(leases)
+    .innerJoin(tenants, eq(leases.tenantId, tenants.id))
+    .innerJoin(units, eq(leases.unitId, units.id))
+    .where(and(eq(units.propertyId, id), eq(leases.status, "active")));
+  const tenantByUnit = new Map(
+    activeLeaseRows.map((r) => [r.unitId, r.tenantName]),
+  );
 
   const occupied = unitRows.filter((u) => u.status === "occupied").length;
   const occupancyRate =
@@ -152,6 +166,7 @@ export default async function PropertyDetailPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Unit</TableHead>
+                  <TableHead>Tenant</TableHead>
                   <TableHead className="text-right">Beds</TableHead>
                   <TableHead className="text-right">Baths</TableHead>
                   <TableHead className="text-right">Sqft</TableHead>
@@ -164,6 +179,9 @@ export default async function PropertyDetailPage({
                 {unitRows.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.name}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {tenantByUnit.get(u.id) ?? "—"}
+                    </TableCell>
                     <TableCell className="text-right">
                       {u.bedrooms ?? "—"}
                     </TableCell>

@@ -16,10 +16,22 @@ export function formatCurrency(
   options?: { maximumFractionDigits?: number },
 ): string {
   const amount = typeof value === "string" ? Number(value) : value;
-  if (Number.isNaN(amount)) return "$0";
+  if (Number.isNaN(amount)) return `₱0`;
   return amount.toLocaleString("en-PH", {
     style: "currency",
     currency: CURRENCY,
     maximumFractionDigits: options?.maximumFractionDigits ?? 0,
+  });
+}
+
+/** Formats a date (or date-like value) as e.g. "Oct 11, 2026". */
+export function formatDate(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
