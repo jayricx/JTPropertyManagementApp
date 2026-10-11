@@ -188,3 +188,148 @@ export const leaseSchema = z
   });
 export type LeaseFormValues = z.input<typeof leaseSchema>;
 export type LeaseFormParsed = z.output<typeof leaseSchema>;
+
+// ---------------------------------------------------------------------------
+// Payments & expenses
+// ---------------------------------------------------------------------------
+
+/** Optional UUID form field — "" becomes undefined (NULL) in the database. */
+const optionalUuid = (message: string) =>
+  z
+    .union([z.literal(""), z.uuid(message)])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v));
+
+export const paymentMethods = [
+  "cash",
+  "check",
+  "bank_transfer",
+  "card",
+  "other",
+] as const;
+export type PaymentMethod = (typeof paymentMethods)[number];
+
+export const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: "Cash",
+  check: "Check",
+  bank_transfer: "Bank transfer",
+  card: "Card",
+  other: "Other",
+};
+
+export const paymentTypes = ["rent", "deposit", "late_fee", "other"] as const;
+export type PaymentType = (typeof paymentTypes)[number];
+
+export const paymentTypeLabels: Record<PaymentType, string> = {
+  rent: "Rent",
+  deposit: "Deposit",
+  late_fee: "Late fee",
+  other: "Other",
+};
+
+export const paymentSchema = z
+  .object({
+    leaseId: optionalUuid("Please select a lease"),
+    amount: optionalNumber(0, 1_000_000),
+    paidDate: isoDate,
+    method: z.enum(paymentMethods),
+    type: z.enum(paymentTypes),
+    notes: optionalText(5000),
+  })
+  .refine((v) => v.amount !== undefined, {
+    message: "Amount is required",
+    path: ["amount"],
+  });
+export type PaymentFormValues = z.input<typeof paymentSchema>;
+export type PaymentFormParsed = z.output<typeof paymentSchema>;
+
+export const expenseCategories = [
+  "repair",
+  "maintenance",
+  "tax",
+  "insurance",
+  "utilities",
+  "hoa",
+  "supplies",
+  "other",
+] as const;
+export type ExpenseCategory = (typeof expenseCategories)[number];
+
+export const expenseCategoryLabels: Record<ExpenseCategory, string> = {
+  repair: "Repair",
+  maintenance: "Maintenance",
+  tax: "Tax",
+  insurance: "Insurance",
+  utilities: "Utilities",
+  hoa: "HOA",
+  supplies: "Supplies",
+  other: "Other",
+};
+
+export const expenseSchema = z
+  .object({
+    propertyId: z.uuid("Please select a property"),
+    unitId: optionalUuid("Please select a unit"),
+    category: z.enum(expenseCategories),
+    amount: optionalNumber(0, 1_000_000),
+    expenseDate: isoDate,
+    vendor: optionalText(255),
+    notes: optionalText(5000),
+  })
+  .refine((v) => v.amount !== undefined, {
+    message: "Amount is required",
+    path: ["amount"],
+  });
+export type ExpenseFormValues = z.input<typeof expenseSchema>;
+export type ExpenseFormParsed = z.output<typeof expenseSchema>;
+
+// ---------------------------------------------------------------------------
+// Maintenance
+// ---------------------------------------------------------------------------
+
+export const maintenanceStatuses = [
+  "new",
+  "in_progress",
+  "resolved",
+  "cancelled",
+] as const;
+export type MaintenanceStatus = (typeof maintenanceStatuses)[number];
+
+export const maintenanceStatusLabels: Record<MaintenanceStatus, string> = {
+  new: "New",
+  in_progress: "In progress",
+  resolved: "Resolved",
+  cancelled: "Cancelled",
+};
+
+export const maintenancePriorities = [
+  "low",
+  "medium",
+  "high",
+  "urgent",
+] as const;
+export type MaintenancePriority = (typeof maintenancePriorities)[number];
+
+export const maintenancePriorityLabels: Record<MaintenancePriority, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
+};
+
+export const maintenanceSchema = z.object({
+  propertyId: z.uuid("Please select a property"),
+  unitId: z.uuid("Please select a unit"),
+  tenantId: optionalUuid("Please select a tenant"),
+  title: z
+    .string()
+    .trim()
+    .min(1, "Title is required")
+    .max(255, "Title must be at most 255 characters"),
+  description: optionalText(5000),
+  status: z.enum(maintenanceStatuses),
+  priority: z.enum(maintenancePriorities),
+  cost: optionalNumber(0, 1_000_000),
+});
+export type MaintenanceFormValues = z.input<typeof maintenanceSchema>;
+export type MaintenanceFormParsed = z.output<typeof maintenanceSchema>;

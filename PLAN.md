@@ -62,12 +62,17 @@ A web app for landlords to register properties, track income/expenses, manage te
 
 ## 12-Week Milestones
 
-- **W1–2:** Project setup, auth, DB schema, dashboard shell
-- **W3–4:** Properties & units CRUD
-- **W5–6:** Tenants & leases
-- **W7–8:** Income/expense tracking + reports
-- **W9–10:** Maintenance requests
+- **W1–2:** Project setup, auth, DB schema, dashboard shell ✅
+- **W3–4:** Properties & units CRUD ✅
+- **W5–6:** Tenants & leases ✅
+- **W7–8:** Income/expense tracking + reports ✅ (finance CRUD + totals; per-property reports pending)
+- **W9–10:** Maintenance requests ✅ (status workflow + resolvedAt stamping; photos pending)
 - **W11–12:** Testing, polish, deploy, beta launch
+
+## Progress
+
+- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals), maintenance requests (priority/status badges, resolvedAt lifecycle).
+- **Next:** email notifications (lease-end alerts), per-property P&L reports, Vercel deployment.
 
 ## Quality & Security
 

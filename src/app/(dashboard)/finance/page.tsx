@@ -1,12 +1,319 @@
-import { Wallet } from "lucide-react";
-import { SectionPlaceholder } from "@/components/dashboard/section-placeholder";
+import { asc, desc, eq } from "drizzle-orm";
+import { Coins, Receipt, Wallet } from "lucide-react";
+import { auth } from "@/auth";
+import { db } from "@/db/client";
+import { expenses, leases, payments, properties, tenants, units } from "@/db/schema";
+import { StatCard } from "@/components/dashboard/stat-card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ExpenseFormDialog } from "@/components/finance/expense-form-dialog";
+import { ExpenseRowActions } from "@/components/finance/expense-row-actions";
+import { PaymentFormDialog } from "@/components/finance/payment-form-dialog";
+import { PaymentRowActions } from "@/components/finance/payment-row-actions";
+import { formatCurrency, formatDate } from "@/lib/utils";
+import {
+  expenseCategoryLabels,
+  paymentMethodLabels,
+  paymentTypeLabels,
+  type ExpenseFormValues,
+  type PaymentFormValues,
+} from "@/lib/validations";
 
-export default function FinancePage() {
+/** Format a stored date as the "YYYY-MM-DD" value `<input type="date">` wants. */
+function toInputDate(value: Date | null): string {
+  return value ? value.toISOString().slice(0, 10) : "";
+}
+
+export default async function FinancePage() {
+  const session = await auth();
+  const userId = session?.user?.id;
+  // The dashboard layout redirects unauthenticated visitors.
+  if (!userId) return null;
+
+  const [paymentRows, expenseRows, leaseRows, propertyRows, unitRows] =
+    await Promise.all([
+      db
+        .select({
+          id: payments.id,
+          leaseId: payments.leaseId,
+          amount: payments.amount,
+          paidDate: payments.paidDate,
+          method: payments.method,
+          type: payments.type,
+          notes: payments.notes,
+          tenantFirst: tenants.firstName,
+          tenantLast: tenants.lastName,
+          unitName: units.name,
+          propertyName: properties.name,
+        })
+        .from(payments)
+        .leftJoin(leases, eq(payments.leaseId, leases.id))
+        .leftJoin(tenants, eq(leases.tenantId, tenants.id))
+        .leftJoin(units, eq(leases.unitId, units.id))
+        .leftJoin(properties, eq(units.propertyId, properties.id))
+        .where(eq(payments.userId, userId))
+        .orderBy(desc(payments.paidDate), desc(payments.createdAt)),
+      db
+        .select({
+          id: expenses.id,
+          propertyId: expenses.propertyId,
+          unitId: expenses.unitId,
+          category: expenses.category,
+          amount: expenses.amount,
+          expenseDate: expenses.expenseDate,
+          vendor: expenses.vendor,
+          notes: expenses.notes,
+          propertyName: properties.name,
+          unitName: units.name,
+        })
+        .from(expenses)
+        .leftJoin(properties, eq(expenses.propertyId, properties.id))
+        .leftJoin(units, eq(expenses.unitId, units.id))
+        .where(eq(expenses.userId, userId))
+        .orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
+      db
+        .select({
+          id: leases.id,
+          tenantFirst: tenants.firstName,
+          tenantLast: tenants.lastName,
+          unitName: units.name,
+          propertyName: properties.name,
+        })
+        .from(leases)
+        .innerJoin(tenants, eq(leases.tenantId, tenants.id))
+        .innerJoin(units, eq(leases.unitId, units.id))
+        .innerJoin(properties, eq(units.propertyId, properties.id))
+        .where(eq(properties.userId, userId))
+        .orderBy(asc(properties.name), asc(units.name)),
+      db
+        .select({ id: properties.id, name: properties.name })
+        .from(properties)
+        .where(eq(properties.userId, userId))
+        .orderBy(asc(properties.name)),
+      db
+        .select({ id: units.id, propertyId: units.propertyId, name: units.name })
+        .from(units)
+        .innerJoin(properties, eq(units.propertyId, properties.id))
+        .where(eq(properties.userId, userId))
+        .orderBy(asc(properties.name), asc(units.name)),
+    ]);
+
+  const totalIncome = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
+  const totalExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
+  const net = totalIncome - totalExpenses;
+
+  const leaseOptions = leaseRows.map((l) => ({
+    id: l.id,
+    label: `${l.tenantFirst} ${l.tenantLast} — ${l.unitName} (${l.propertyName})`,
+  }));
+  const propertyOptions = propertyRows.map((p) => ({ id: p.id, label: p.name }));
+  const unitOptions = unitRows.map((u) => ({
+    id: u.id,
+    propertyId: u.propertyId,
+    label: u.name,
+  }));
+
+  const toPaymentValues = (
+    p: (typeof paymentRows)[number],
+  ): PaymentFormValues & { id: string } => ({
+    id: p.id,
+    leaseId: p.leaseId ?? "",
+    amount: Number(p.amount),
+    paidDate: toInputDate(p.paidDate),
+    method: p.method,
+    type: p.type,
+    notes: p.notes ?? "",
+  });
+
+  const toExpenseValues = (
+    e: (typeof expenseRows)[number],
+  ): ExpenseFormValues & { id: string } => ({
+    id: e.id,
+    propertyId: e.propertyId ?? "",
+    unitId: e.unitId ?? "",
+    category: e.category,
+    amount: Number(e.amount),
+    expenseDate: toInputDate(e.expenseDate),
+    vendor: e.vendor ?? "",
+    notes: e.notes ?? "",
+  });
+
   return (
-    <SectionPlaceholder
-      icon={Wallet}
-      title="Finance"
-      description="Record income and expenses, and view per-property reports."
-    />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
+        <p className="text-muted-foreground">
+          Record income and expenses, and view your portfolio&apos;s cash flow.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          icon={Wallet}
+          label="Total income"
+          value={formatCurrency(totalIncome)}
+          sub={`${paymentRows.length} payment${paymentRows.length === 1 ? "" : "s"} recorded`}
+        />
+        <StatCard
+          icon={Receipt}
+          label="Total expenses"
+          value={formatCurrency(totalExpenses)}
+          sub={`${expenseRows.length} expense${expenseRows.length === 1 ? "" : "s"} recorded`}
+        />
+        <StatCard
+          icon={Coins}
+          label="Net balance"
+          value={formatCurrency(net)}
+          sub="Income minus expenses"
+        />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle>Income</CardTitle>
+            <CardDescription>
+              Rent and other payments received from tenants.
+            </CardDescription>
+          </div>
+          <PaymentFormDialog leaseOptions={leaseOptions} />
+        </CardHeader>
+        <CardContent>
+          {paymentRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No income recorded yet. Use &ldquo;Add payment&rdquo; to log rent
+              you&apos;ve received.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Lease</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paymentRows.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>{formatDate(p.paidDate)}</TableCell>
+                    <TableCell>
+                      {p.leaseId ? (
+                        <div>
+                          <div>
+                            {p.tenantFirst} {p.tenantLast}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {p.unitName} · {p.propertyName}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Not linked
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>{paymentTypeLabels[p.type]}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {paymentMethodLabels[p.method]}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(p.amount)}
+                    </TableCell>
+                    <TableCell>
+                      <PaymentRowActions
+                        leaseOptions={leaseOptions}
+                        payment={toPaymentValues(p)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle>Expenses</CardTitle>
+            <CardDescription>
+              Repairs, taxes, utilities, and other property costs.
+            </CardDescription>
+          </div>
+          <ExpenseFormDialog
+            propertyOptions={propertyOptions}
+            unitOptions={unitOptions}
+          />
+        </CardHeader>
+        <CardContent>
+          {expenseRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No expenses recorded yet. Use &ldquo;Add expense&rdquo; to start
+              tracking property costs.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {expenseRows.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell>{formatDate(e.expenseDate)}</TableCell>
+                    <TableCell>
+                      <div>{e.propertyName ?? "—"}</div>
+                      {e.unitName && (
+                        <div className="text-xs text-muted-foreground">
+                          {e.unitName}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>{expenseCategoryLabels[e.category]}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {e.vendor ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(e.amount)}
+                    </TableCell>
+                    <TableCell>
+                      <ExpenseRowActions
+                        propertyOptions={propertyOptions}
+                        unitOptions={unitOptions}
+                        expense={toExpenseValues(e)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
