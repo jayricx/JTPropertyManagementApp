@@ -48,6 +48,7 @@ export default async function LeasesPage() {
       depositAmount: leases.depositAmount,
       depositReturned: leases.depositReturned,
       status: leases.status,
+      leaseEndReminderSentAt: leases.leaseEndReminderSentAt,
       tenantName: sql<string>`concat(${tenants.firstName}, ' ', ${tenants.lastName})`,
       unitName: units.name,
       propertyName: properties.name,
@@ -143,6 +144,11 @@ export default async function LeasesPage() {
                       <Badge variant="outline" className={leaseStatusClass[l.status]}>
                         {leaseStatusLabels[l.status]}
                       </Badge>
+                      {l.leaseEndReminderSentAt && l.endDate && (
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          End reminder sent {formatDate(l.leaseEndReminderSentAt)}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">

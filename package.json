@@ -30,6 +30,7 @@
         "react": "19.3.0",
         "react-dom": "19.3.0",
         "react-hook-form": "^7.89.0",
+        "resend": "^6.32.1",
         "shadcn": "^4.21.4",
         "sonner": "^2.0.8",
         "tsx": "^4.23.15",

@@ -87,7 +87,9 @@ function leaseDbValues(data: LeaseFormParsed) {
     unitId: data.unitId,
     tenantId: data.tenantId,
     startDate: new Date(`${data.startDate}T00:00:00Z`),
-    endDate: data.endDate ? new Date(`${data.endDate}T00:00:00Z`) : undefined,
+    // null (not undefined) so clearing the end date actually persists —
+    // Drizzle skips undefined keys in .set()/.values().
+    endDate: data.endDate ? new Date(`${data.endDate}T00:00:00Z`) : null,
     rentAmount: String(data.rentAmount ?? 0),
     depositAmount: String(data.depositAmount ?? 0),
     depositReturned: data.depositReturned === "on",
@@ -149,7 +151,7 @@ export async function updateLeaseAction(
   // Confirm the lease's current unit belongs to a property owned by this
   // user before touching anything.
   const owned = await db
-    .select({ id: leases.id, unitId: leases.unitId })
+    .select({ id: leases.id, unitId: leases.unitId, endDate: leases.endDate })
     .from(leases)
     .innerJoin(units, eq(leases.unitId, units.id))
     .innerJoin(properties, eq(units.propertyId, properties.id))
@@ -175,9 +177,20 @@ export async function updateLeaseAction(
     return { error: "This unit already has an active lease." };
   }
 
+  // Moving the end date re-arms the lease-end reminder email — the old
+  // "already reminded" stamp would otherwise suppress it forever.
+  const newEndDate = parsed.data.endDate
+    ? new Date(`${parsed.data.endDate}T00:00:00Z`)
+    : null;
+  const endDateChanged =
+    (owned[0].endDate?.getTime() ?? null) !== (newEndDate?.getTime() ?? null);
+
   await db
     .update(leases)
-    .set(leaseDbValues(parsed.data))
+    .set({
+      ...leaseDbValues(parsed.data),
+      ...(endDateChanged ? { leaseEndReminderSentAt: null } : {}),
+    })
     .where(eq(leases.id, leaseId));
 
   // The unit may have changed — resync both the old and the new unit.

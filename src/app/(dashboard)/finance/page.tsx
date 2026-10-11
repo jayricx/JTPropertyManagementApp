@@ -15,6 +15,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -49,6 +50,7 @@ export default async function FinancePage() {
         .select({
           id: payments.id,
           leaseId: payments.leaseId,
+          propertyId: properties.id,
           amount: payments.amount,
           paidDate: payments.paidDate,
           method: payments.method,
@@ -114,6 +116,32 @@ export default async function FinancePage() {
   const totalIncome = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
   const net = totalIncome - totalExpenses;
+
+  // Per-property P&L: payments flow in through their lease's unit; payments
+  // without a lease are grouped under "Unassigned".
+  const pnlByProperty = new Map<
+    string,
+    { label: string; income: number; expense: number }
+  >();
+  const pnlEntry = (key: string, label: string) => {
+    let entry = pnlByProperty.get(key);
+    if (!entry) {
+      entry = { label, income: 0, expense: 0 };
+      pnlByProperty.set(key, entry);
+    }
+    return entry;
+  };
+  for (const p of paymentRows) {
+    pnlEntry(p.propertyId ?? "unassigned", p.propertyName ?? "Unassigned")
+      .income += Number(p.amount);
+  }
+  for (const e of expenseRows) {
+    pnlEntry(e.propertyId ?? "unassigned", e.propertyName ?? "Unassigned")
+      .expense += Number(e.amount);
+  }
+  const pnlRows = [...pnlByProperty.entries()]
+    .map(([key, r]) => ({ key, ...r, net: r.income - r.expense }))
+    .sort((a, b) => b.net - a.net);
 
   const leaseOptions = leaseRows.map((l) => ({
     id: l.id,
@@ -310,6 +338,70 @@ export default async function FinancePage() {
                   </TableRow>
                 ))}
               </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Per-property P&amp;L</CardTitle>
+          <CardDescription>
+            Income minus expenses for each property. Payments not linked to a
+            lease count as unassigned.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {pnlRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Record income and expenses to see per-property profitability.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Property</TableHead>
+                  <TableHead className="text-right">Income</TableHead>
+                  <TableHead className="text-right">Expenses</TableHead>
+                  <TableHead className="text-right">Net</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pnlRows.map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell>
+                      {r.label === "Unassigned" ? (
+                        <span className="text-muted-foreground">Unassigned</span>
+                      ) : (
+                        r.label
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(r.income)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(r.expense)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(r.net)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell>Total</TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(totalIncome)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(totalExpenses)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatCurrency(net)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           )}
         </CardContent>

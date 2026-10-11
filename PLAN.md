@@ -71,8 +71,9 @@ A web app for landlords to register properties, track income/expenses, manage te
 
 ## Progress
 
-- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals), maintenance requests (priority/status badges, resolvedAt lifecycle).
-- **Next:** email notifications (lease-end alerts), per-property P&L reports, Vercel deployment.
+- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals and per-property P&L), maintenance requests (priority/status badges, resolvedAt lifecycle), lease-end email alerts (Resend + daily Vercel cron, one reminder per lease term, re-armed when the end date moves).
+- **Deferred:** maintenance/property photos (needs R2/S3 storage), recurring rent automation (needs Stripe) — both Phase 2.
+- **Next:** Vercel deployment (env vars: DATABASE_URL, AUTH_SECRET, AUTH_URL, CRON_SECRET, RESEND_API_KEY, EMAIL_FROM).
 
 ## Quality & Security
 

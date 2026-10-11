@@ -192,6 +192,10 @@ export const leases = pgTable(
     depositReturned: boolean("deposit_returned").default(false).notNull(),
     status: leaseStatusEnum("status").default("active").notNull(),
     notes: text("notes"),
+    // When the lease-end reminder email went out; reset if the end date moves.
+    leaseEndReminderSentAt: timestamp("lease_end_reminder_sent_at", {
+      mode: "date",
+    }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
