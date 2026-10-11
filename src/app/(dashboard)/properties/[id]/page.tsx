@@ -76,7 +76,7 @@ export default async function PropertyDetailPage({
     0,
   );
   const addressLine =
-    [property.address, property.city, property.state]
+    [property.address, property.city, property.state, property.country]
       .filter(Boolean)
       .join(", ") || "No address on file";
 

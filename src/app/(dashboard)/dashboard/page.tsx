@@ -3,6 +3,7 @@ import { db } from "@/db/client";
 import { and, count, eq, gte, inArray, sum } from "drizzle-orm";
 import { Building2, KeyRound, Wallet, Wrench } from "lucide-react";
 import { maintenanceRequests, payments, properties, units } from "@/db/schema";
+import { formatCurrency } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -76,13 +77,6 @@ async function getStats(userId: string): Promise<DashboardStats> {
 export default async function DashboardPage() {
   const session = await auth();
   const stats = session?.user ? await getStats(session.user.id) : null;
-
-  const formatCurrency = (value: number) =>
-    value.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    });
 
   const occupancy =
     stats && stats.totalUnits > 0

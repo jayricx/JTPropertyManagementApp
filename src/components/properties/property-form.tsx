@@ -1,10 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
+import { useEffect, useActionState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
+import {
+  DEFAULT_COUNTRY,
+  countries,
+  guessCountryFromTimeZone,
+} from "@/lib/countries";
 import {
   Card,
   CardContent,
@@ -45,9 +50,14 @@ import {
 interface PropertyFormProps {
   /** When present, the form edits this property instead of creating one. */
   property?: PropertyFormValues & { id: string };
+  /**
+   * Detected country for new properties — usually the `x-vercel-ip-country`
+   * request header. Falls back to the browser's time zone, then Philippines.
+   */
+  defaultCountry?: string;
 }
 
-export function PropertyForm({ property }: PropertyFormProps) {
+export function PropertyForm({ property, defaultCountry }: PropertyFormProps) {
   const action = property ? updatePropertyAction : createPropertyAction;
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     action,
@@ -62,11 +72,26 @@ export function PropertyForm({ property }: PropertyFormProps) {
       city: property?.city ?? "",
       state: property?.state ?? "",
       zipCode: property?.zipCode ?? "",
-      country: property?.country ?? "",
+      country: property?.country ?? defaultCountry ?? DEFAULT_COUNTRY,
       type: property?.type ?? "apartment",
       notes: property?.notes ?? "",
     },
   });
+
+  // When the server couldn't detect a country (e.g. local development),
+  // infer it from the browser's time zone. Only touches pristine fields so
+  // it never overrides the user's own selection.
+  useEffect(() => {
+    if (property || defaultCountry) return;
+    const timeZone =
+      typeof Intl !== "undefined"
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : undefined;
+    const guess = guessCountryFromTimeZone(timeZone);
+    if (guess && !form.formState.dirtyFields.country) {
+      form.setValue("country", guess);
+    }
+  }, [property, defaultCountry, form]);
 
   function onSubmit(values: PropertyFormParsed) {
     const formData = new FormData();
@@ -147,7 +172,7 @@ export function PropertyForm({ property }: PropertyFormProps) {
                 <FormItem>
                   <FormLabel>Street address</FormLabel>
                   <FormControl>
-                    <Input placeholder="123 Main St" {...field} />
+                    <Input placeholder="123 Rizal St, Brgy. San Antonio" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -161,7 +186,7 @@ export function PropertyForm({ property }: PropertyFormProps) {
                   <FormItem>
                     <FormLabel>City</FormLabel>
                     <FormControl>
-                      <Input placeholder="Springfield" {...field} />
+                      <Input placeholder="Quezon City" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -172,9 +197,9 @@ export function PropertyForm({ property }: PropertyFormProps) {
                 name="state"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>State</FormLabel>
+                    <FormLabel>State / region</FormLabel>
                     <FormControl>
-                      <Input placeholder="CA" {...field} />
+                      <Input placeholder="Metro Manila" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -187,7 +212,7 @@ export function PropertyForm({ property }: PropertyFormProps) {
                   <FormItem>
                     <FormLabel>ZIP code</FormLabel>
                     <FormControl>
-                      <Input placeholder="90210" {...field} />
+                      <Input placeholder="1101" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -200,9 +225,27 @@ export function PropertyForm({ property }: PropertyFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Country</FormLabel>
-                  <FormControl>
-                    <Input placeholder="United States" {...field} />
-                  </FormControl>
+                  <Select
+                    items={countries.map((c) => ({
+                      value: c.name,
+                      label: c.name,
+                    }))}
+                    value={field.value || null}
+                    onValueChange={(v) => field.onChange(v)}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {countries.map((c) => (
+                        <SelectItem key={c.code} value={c.name}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

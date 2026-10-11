@@ -178,7 +178,7 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
                 name="rentAmount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly rent ($)</FormLabel>
+                    <FormLabel>Monthly rent (₱)</FormLabel>
                     <FormControl>
                       <Input
                         type="number"

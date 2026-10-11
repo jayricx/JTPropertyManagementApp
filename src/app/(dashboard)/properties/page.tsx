@@ -29,6 +29,7 @@ export default async function PropertiesPage() {
       address: properties.address,
       city: properties.city,
       state: properties.state,
+      country: properties.country,
       type: properties.type,
       unitCount: count(units.id),
       // Postgres aggregate FILTER — occupied units only.
@@ -75,8 +76,9 @@ export default async function PropertiesPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((p) => {
             const addressLine =
-              [p.address, p.city, p.state].filter(Boolean).join(", ") ||
-              "No address on file";
+              [p.address, p.city, p.state, p.country]
+                .filter(Boolean)
+                .join(", ") || "No address on file";
             const occupied = Number(p.occupiedCount ?? 0);
             const occupancy =
               p.unitCount > 0 ? Math.round((occupied / p.unitCount) * 100) : 0;
