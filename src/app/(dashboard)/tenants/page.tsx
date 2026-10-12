@@ -50,6 +50,7 @@ export default async function TenantsPage() {
       lastName: tenants.lastName,
       email: tenants.email,
       phone: tenants.phone,
+      accountId: tenants.accountId,
       owned: eq(tenants.userId, userId),
       // Postgres aggregate FILTER — active leases only.
       activeLeases: sql<number>`count(${leases.id}) filter (where ${leases.status} = 'active')`,
@@ -108,7 +109,12 @@ export default async function TenantsPage() {
                 {rows.map((t) => (
                   <TableRow key={t.id}>
                     <TableCell className="font-medium">
-                      {t.firstName} {t.lastName}
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        {t.firstName} {t.lastName}
+                        {t.accountId && (
+                          <Badge variant="outline">Portal</Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {t.email ?? "—"}

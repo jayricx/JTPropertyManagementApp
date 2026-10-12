@@ -18,10 +18,10 @@ A web app for landlords to register properties, track income/expenses, manage te
 
 ## Architecture
 
-- **Route groups:** `(marketing)` landing/auth · `(dashboard)` landlord app (protected) · `(tenant)` tenant portal (Phase 2)
+- **Route groups:** `(marketing)` landing/auth · `(dashboard)` landlord app (protected) · `(tenant)` tenant portal (protected)
 - **Data access:** Server Components + Server Actions (or tRPC if you prefer explicit APIs)
 - **Multi-tenancy:** every table scoped by `userId`/`orgId`; enforce scoping in every query (use RLS if Supabase)
-- **Roles:** `LANDLORD` now, `TENANT` later (middleware + RBAC checks)
+- **Roles:** `users.role` — `landlord` (dashboard) / `tenant` (portal); the session callback exposes it, login routes by it, and both layouts guard in opposite directions
 
 ## Data Model (Prisma sketch)
 
@@ -71,9 +71,9 @@ A web app for landlords to register properties, track income/expenses, manage te
 
 ## Progress
 
-- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals and per-property P&L), maintenance requests (priority/status badges, resolvedAt lifecycle), lease-end email alerts (Resend + daily Vercel cron, one reminder per lease term, re-armed when the end date moves), mobile navigation (sticky header + slide-in drawer below `md`), **co-ownership** (`property_collaborators` table; owners share a property by email from the property page; co-owners get full manage access — units, leases, finance, maintenance — everywhere the app scopes by property via `src/lib/access.ts`; owner-only: deleting the property and managing the co-owner list; tenants stay per-creator — co-owners see a partner's tenants read-only; the `role` column is ready for a future read-only "viewer" share), **reports + CSV export** (`/reports` with 3/6/12/24-month periods: cash-flow chart + table, P&L by property, occupancy history derived from lease date overlaps; CSV downloads via `/api/reports/csv` sharing one engine in `src/lib/reports.ts` so screen and export numbers always match).
+- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals and per-property P&L), maintenance requests (priority/status badges, resolvedAt lifecycle), lease-end email alerts (Resend + daily Vercel cron, one reminder per lease term, re-armed when the end date moves), mobile navigation (sticky header + slide-in drawer below `md`), **co-ownership + team roles** (`property_collaborators` table; owners share a property by email from the property page with a role: **co-owner** (full manage) or **viewer** (read-only); every query scopes through `src/lib/access.ts` — reads use the access tier, all mutations gate on the `canManage*` tier so viewers see badges and read-only pages everywhere; owner-only: deleting the property and managing the share list; tenants stay per-creator — collaborators see a partner's tenants read-only), **reports + CSV export** (`/reports` with 3/6/12/24-month periods: cash-flow chart + table, P&L by property, occupancy history derived from lease date overlaps; CSV downloads via `/api/reports/csv` sharing one engine in `src/lib/reports.ts` so screen and export numbers always match), **tenant portal** (`users.role` landlord/tenant + `tenants.account_id` link; the landlord grants access from a card on the tenant edit page — password ≥ 8 chars, tenant email required — with a `Portal` badge on the roster and revoke that reassigns the tenant's filed requests to the landlord before removing the login; `/portal` shows the lease + history, a pay-rent card (Stripe later), payment history, and an inline maintenance form that derives property/unit from the tenant's own active lease; guards run both directions — tenants bounce off `/dashboard`, landlords off `/portal`, and login routes by role).
 - **Deferred:** maintenance/property photos (needs R2/S3 storage — no credentials yet; build with local-storage dev fallback when starting), recurring rent automation (needs Stripe — no credentials yet) — both Phase 2.
-- **Next:** Vercel deployment (env vars: DATABASE_URL, AUTH_SECRET, AUTH_URL, CRON_SECRET, RESEND_API_KEY, EMAIL_FROM). Remaining Phase 2: tenant portal, team seats (viewer role), photos, Stripe rent collection.
+- **Next:** Vercel deployment (env vars: DATABASE_URL, AUTH_SECRET, AUTH_URL, CRON_SECRET, RESEND_API_KEY, EMAIL_FROM). Remaining Phase 2: photos (R2/S3) and Stripe rent collection — both parked until credentials arrive.
 
 ## Quality & Security
 

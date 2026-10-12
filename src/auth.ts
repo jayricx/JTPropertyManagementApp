@@ -57,18 +57,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           image: user.image,
+          role: user.role,
         };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
+      // Tokens issued before roles existed default to landlord.
+      if (!token.role) token.role = "landlord";
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+      }
+      if (session.user) {
+        session.user.role =
+          (token.role as "landlord" | "tenant" | undefined) ?? "landlord";
       }
       return session;
     },

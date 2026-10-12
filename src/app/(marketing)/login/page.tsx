@@ -49,7 +49,16 @@ export default function LoginPage() {
         setError("Invalid email or password.");
         return;
       }
-      router.push("/dashboard");
+      // Landlords land on the dashboard, tenant accounts on the portal.
+      let destination = "/dashboard";
+      try {
+        const res = await fetch("/api/auth/session");
+        const sess = await res.json();
+        if (sess?.user?.role === "tenant") destination = "/portal";
+      } catch {
+        // Fall through to the dashboard; the layout guard bounces tenants.
+      }
+      router.push(destination);
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");

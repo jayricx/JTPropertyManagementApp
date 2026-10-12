@@ -9,6 +9,8 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  // Tenant accounts belong in the portal, not the landlord dashboard.
+  if (session.user.role === "tenant") redirect("/portal");
 
   return (
     // Stacked on mobile (header above content), sidebar-left on desktop.

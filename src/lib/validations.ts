@@ -333,3 +333,18 @@ export const maintenanceSchema = z.object({
 });
 export type MaintenanceFormValues = z.input<typeof maintenanceSchema>;
 export type MaintenanceFormParsed = z.output<typeof maintenanceSchema>;
+
+/**
+ * Tenant portal: report an issue. Property/unit/tenant are derived from the
+ * tenant's own active lease server-side — never trusted from the client.
+ */
+export const tenantRequestSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, "Title is required")
+    .max(255, "Title must be at most 255 characters"),
+  description: optionalText(5000),
+  priority: z.enum(maintenancePriorities),
+});
+export type TenantRequestFormValues = z.input<typeof tenantRequestSchema>;

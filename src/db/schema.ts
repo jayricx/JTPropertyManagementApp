@@ -17,6 +17,8 @@ import {
 // Auth.js tables (used by @auth/drizzle-adapter)
 // ---------------------------------------------------------------------------
 
+export const userRoleEnum = pgEnum("user_role", ["landlord", "tenant"]);
+
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }),
@@ -25,6 +27,8 @@ export const users = pgTable("users", {
   image: varchar("image", { length: 255 }),
   // App-specific columns (ignored by the Auth.js adapter)
   passwordHash: varchar("password_hash", { length: 255 }),
+  // Landlords run the dashboard; tenant accounts only ever see the portal.
+  role: userRoleEnum("role").default("landlord").notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -190,6 +194,12 @@ export const tenants = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Portal login: links this roster entry to a tenant-role user account.
+    // Deleting the account keeps the roster row (set null). One account per
+    // tenant is enforced by the grant action, which creates a fresh user.
+    accountId: uuid("account_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     firstName: varchar("first_name", { length: 255 }).notNull(),
     lastName: varchar("last_name", { length: 255 }).notNull(),
     email: varchar("email", { length: 255 }),

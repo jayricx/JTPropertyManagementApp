@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { TenantForm } from "@/components/tenants/tenant-form";
+import { PortalAccessCard } from "@/components/tenants/portal-access-card";
 import { isUuid } from "@/lib/utils";
 
 interface EditTenantPageProps {
@@ -43,6 +44,12 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
           phone: tenant.phone ?? "",
           notes: tenant.notes ?? "",
         }}
+      />
+      <PortalAccessCard
+        tenantId={tenant.id}
+        tenantName={`${tenant.firstName} ${tenant.lastName}`}
+        email={tenant.email ?? null}
+        granted={tenant.accountId !== null}
       />
     </div>
   );
