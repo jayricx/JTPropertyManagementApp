@@ -125,12 +125,15 @@ export const properties = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Co-ownership — a property can be shared with other users, who get full
-// manage access to it. The role column is ready for read-only "viewer"
-// sharing later.
+// Co-ownership — a property can be shared with other users. Co-owners get
+// full manage access; viewers get read-only access (property managers who
+// should not change records).
 // ---------------------------------------------------------------------------
 
-export const collaboratorRoleEnum = pgEnum("collaborator_role", ["co_owner"]);
+export const collaboratorRoleEnum = pgEnum("collaborator_role", [
+  "co_owner",
+  "viewer",
+]);
 
 export const propertyCollaborators = pgTable(
   "property_collaborators",

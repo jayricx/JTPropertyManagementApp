@@ -12,15 +12,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form";
-import { accessiblePropertyIds } from "@/lib/access";
+import { manageablePropertyIds } from "@/lib/access";
 
 export default async function NewLeasePage() {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
 
-  // Units on owned + co-owned properties can receive new leases.
-  const accessibleIds = await accessiblePropertyIds(userId);
+  // Only units on properties the user can manage (owned + co-owned) can
+  // receive new leases — viewers are redirected to the guidance card below.
+  const manageableIds = await manageablePropertyIds(userId);
 
   const [tenantRows, unitRows] = await Promise.all([
     db
@@ -41,7 +42,7 @@ export default async function NewLeasePage() {
       })
       .from(units)
       .innerJoin(properties, eq(units.propertyId, properties.id))
-      .where(inArray(properties.id, accessibleIds))
+      .where(inArray(properties.id, manageableIds))
       .orderBy(asc(properties.name), asc(units.name)),
   ]);
 

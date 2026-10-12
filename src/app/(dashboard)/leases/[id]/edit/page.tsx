@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, properties, tenants, units } from "@/db/schema";
 import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form";
-import { accessiblePropertyIds, canAccessUnit } from "@/lib/access";
+import { accessiblePropertyIds, canManageUnit } from "@/lib/access";
 import { isUuid } from "@/lib/utils";
 import type { LeaseFormValues } from "@/lib/validations";
 
@@ -43,7 +43,8 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
     .where(eq(leases.id, id))
     .limit(1);
   // The lease's unit must sit on a property this user can access.
-  if (!lease || !(await canAccessUnit(userId, lease.unitId))) notFound();
+  // Viewers may look at leases but not edit them.
+  if (!lease || !(await canManageUnit(userId, lease.unitId))) notFound();
 
   const accessibleIds = await accessiblePropertyIds(userId);
 

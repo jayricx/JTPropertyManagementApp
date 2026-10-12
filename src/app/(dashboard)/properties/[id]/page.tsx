@@ -33,7 +33,7 @@ import { CoOwnersCard } from "@/components/properties/co-owners-card";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { UnitFormDialog } from "@/components/properties/unit-form-dialog";
 import { UnitRowActions } from "@/components/properties/unit-row-actions";
-import { canAccessProperty } from "@/lib/access";
+import { getPropertyAccess } from "@/lib/access";
 import { formatCurrency, isUuid } from "@/lib/utils";
 import {
   propertyTypeLabels,
@@ -64,23 +64,26 @@ export default async function PropertyDetailPage({
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
 
-  // Access = owned by this user, or shared with them as co-owner.
+  // Access = owned by this user, or shared with them (co_owner or viewer).
   const [property] = await db
     .select()
     .from(properties)
     .where(eq(properties.id, id))
     .limit(1);
-  if (!property || !(await canAccessProperty(userId, id))) notFound();
+  const access = await getPropertyAccess(userId, id);
+  if (!property || !access) notFound();
 
-  const isOwner = property.userId === userId;
+  const isOwner = access === "owner";
+  const canManage = access !== "viewer";
 
-  // Co-owner roster, plus the owner's name when the viewer is a co-owner.
+  // Collaborator roster, plus the owner's name when the viewer is a guest.
   const [coOwnerRows, ownerRows] = await Promise.all([
     db
       .select({
         id: propertyCollaborators.id,
         name: users.name,
         email: users.email,
+        role: propertyCollaborators.role,
         createdAt: propertyCollaborators.createdAt,
       })
       .from(propertyCollaborators)
@@ -156,30 +159,36 @@ export default async function PropertyDetailPage({
             <h1 className="text-2xl font-bold tracking-tight">
               {property.name}
             </h1>
-            {!isOwner && <Badge variant="outline">Co-owned</Badge>}
+            {!isOwner && (
+              <Badge variant="outline">
+                {access === "viewer" ? "Viewer" : "Co-owned"}
+              </Badge>
+            )}
             <Badge variant="secondary" className="capitalize">
               {propertyTypeLabels[property.type]}
             </Badge>
           </div>
           <p className="text-muted-foreground">{addressLine}</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            render={
-              <Link href={`/properties/${property.id}/edit`}>
-                <PencilIcon />
-                Edit
-              </Link>
-            }
-          />
-          {isOwner && (
-            <DeletePropertyButton
-              propertyId={property.id}
-              propertyName={property.name}
+        {canManage && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              render={
+                <Link href={`/properties/${property.id}/edit`}>
+                  <PencilIcon />
+                  Edit
+                </Link>
+              }
             />
-          )}
-        </div>
+            {isOwner && (
+              <DeletePropertyButton
+                propertyId={property.id}
+                propertyName={property.name}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       <Card>
@@ -192,7 +201,7 @@ export default async function PropertyDetailPage({
               roll
             </CardDescription>
           </div>
-          <UnitFormDialog propertyId={property.id} />
+          {canManage && <UnitFormDialog propertyId={property.id} />}
         </CardHeader>
         <CardContent>
           {unitRows.length === 0 ? (
@@ -210,7 +219,9 @@ export default async function PropertyDetailPage({
                   <TableHead className="text-right">Sqft</TableHead>
                   <TableHead className="text-right">Rent</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManage && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -240,12 +251,14 @@ export default async function PropertyDetailPage({
                         {unitStatusLabels[u.status]}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <UnitRowActions
-                        propertyId={property.id}
-                        unit={toFormValues(u)}
-                      />
-                    </TableCell>
+                    {canManage && (
+                      <TableCell>
+                        <UnitRowActions
+                          propertyId={property.id}
+                          unit={toFormValues(u)}
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

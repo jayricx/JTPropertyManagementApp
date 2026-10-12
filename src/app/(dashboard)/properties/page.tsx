@@ -3,7 +3,7 @@ import { count, desc, eq, inArray, sql } from "drizzle-orm";
 import { PlusIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { properties, units } from "@/db/schema";
+import { properties, propertyCollaborators, units } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +48,19 @@ export default async function PropertiesPage() {
         .groupBy(properties.id)
         .orderBy(desc(properties.createdAt))
     : [];
+
+  // This user's collaborator roles, to badge shared properties as
+  // "Co-owned" vs read-only "Viewer".
+  const collabRoleRows = await db
+    .select({
+      propertyId: propertyCollaborators.propertyId,
+      role: propertyCollaborators.role,
+    })
+    .from(propertyCollaborators)
+    .where(eq(propertyCollaborators.userId, userId));
+  const roleByProperty = new Map(
+    collabRoleRows.map((r) => [r.propertyId, r.role]),
+  );
 
   return (
     <div className="space-y-6">
@@ -101,7 +114,11 @@ export default async function PropertiesPage() {
                       </CardTitle>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {isCoOwned && (
-                          <Badge variant="outline">Co-owned</Badge>
+                          <Badge variant="outline">
+                            {roleByProperty.get(p.id) === "viewer"
+                              ? "Viewer"
+                              : "Co-owned"}
+                          </Badge>
                         )}
                         <Badge variant="secondary" className="capitalize">
                           {propertyTypeLabels[p.type]}

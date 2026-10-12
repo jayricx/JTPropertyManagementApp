@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { MaintenanceFormDialog } from "@/components/maintenance/maintenance-form-dialog";
 import { MaintenanceRowActions } from "@/components/maintenance/maintenance-row-actions";
-import { accessiblePropertyIds } from "@/lib/access";
+import { accessiblePropertyIds, manageablePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   maintenancePriorityLabels,
@@ -55,9 +55,14 @@ export default async function MaintenancePage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
-  // Requests are scoped to accessible properties (owned + co-owned), so
-  // both partners see everything filed on a shared property.
-  const accessibleIds = await accessiblePropertyIds(userId);
+  // Requests are scoped to shared properties, so owner and co-owner both
+  // see everything filed there — but only they can act on it (viewers read).
+  const [accessibleIds, manageableIds] = await Promise.all([
+    accessiblePropertyIds(userId),
+    manageablePropertyIds(userId),
+  ]);
+  const canManageAny = manageableIds.length > 0;
+  const manageableSet = new Set(manageableIds);
 
   const [requestRows, propertyRows, unitRows, tenantRows] = await Promise.all([
     db
@@ -91,13 +96,13 @@ export default async function MaintenancePage() {
     db
       .select({ id: properties.id, name: properties.name })
       .from(properties)
-      .where(inArray(properties.id, accessibleIds))
+      .where(inArray(properties.id, manageableIds))
       .orderBy(asc(properties.name)),
     db
       .select({ id: units.id, propertyId: units.propertyId, name: units.name })
       .from(units)
       .innerJoin(properties, eq(units.propertyId, properties.id))
-      .where(inArray(properties.id, accessibleIds))
+      .where(inArray(properties.id, manageableIds))
       .orderBy(asc(properties.name), asc(units.name)),
     db
       .select({
@@ -148,11 +153,13 @@ export default async function MaintenancePage() {
             Track repair requests from new to resolved.
           </p>
         </div>
-        <MaintenanceFormDialog
-          propertyOptions={propertyOptions}
-          unitOptions={unitOptions}
-          tenantOptions={tenantOptions}
-        />
+        {canManageAny && (
+          <MaintenanceFormDialog
+            propertyOptions={propertyOptions}
+            unitOptions={unitOptions}
+            tenantOptions={tenantOptions}
+          />
+        )}
       </div>
 
       <Card>
@@ -167,8 +174,9 @@ export default async function MaintenancePage() {
         <CardContent>
           {requestRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No maintenance requests yet. Use &ldquo;New request&rdquo; to log
-              a repair for one of your units.
+              {canManageAny
+                ? "No maintenance requests yet. Use \u201cNew request\u201d to log a repair for one of your units."
+                : "No maintenance requests yet."}
             </p>
           ) : (
             <Table>
@@ -180,7 +188,9 @@ export default async function MaintenancePage() {
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManageAny && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -230,14 +240,18 @@ export default async function MaintenancePage() {
                         formatCurrency(r.cost)
                       )}
                     </TableCell>
-                    <TableCell>
-                      <MaintenanceRowActions
-                        propertyOptions={propertyOptions}
-                        unitOptions={unitOptions}
-                        tenantOptions={tenantOptions}
-                        request={toFormValues(r)}
-                      />
-                    </TableCell>
+                    {canManageAny && (
+                      <TableCell>
+                        {manageableSet.has(r.propertyId) ? (
+                          <MaintenanceRowActions
+                            propertyOptions={propertyOptions}
+                            unitOptions={unitOptions}
+                            tenantOptions={tenantOptions}
+                            request={toFormValues(r)}
+                          />
+                        ) : null}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

@@ -24,7 +24,7 @@ import { ExpenseFormDialog } from "@/components/finance/expense-form-dialog";
 import { ExpenseRowActions } from "@/components/finance/expense-row-actions";
 import { PaymentFormDialog } from "@/components/finance/payment-form-dialog";
 import { PaymentRowActions } from "@/components/finance/payment-row-actions";
-import { accessiblePropertyIds } from "@/lib/access";
+import { accessiblePropertyIds, manageablePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   expenseCategoryLabels,
@@ -45,15 +45,22 @@ export default async function FinancePage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
-  // Owned properties plus co-owned ones: a co-owner sees their own records
-  // and everything booked to properties shared with them.
-  const accessibleIds = await accessiblePropertyIds(userId);
+  // Owned properties plus shared ones: the page shows everything the user
+  // can access, while record buttons/options only cover what they manage
+  // (viewers get a read-only view — their own records stay editable).
+  const [accessibleIds, manageableIds] = await Promise.all([
+    accessiblePropertyIds(userId),
+    manageablePropertyIds(userId),
+  ]);
+  const canManageAny = manageableIds.length > 0;
+  const manageableSet = new Set(manageableIds);
 
   const [paymentRows, expenseRows, leaseRows, propertyRows, unitRows] =
     await Promise.all([
       db
         .select({
           id: payments.id,
+          userId: payments.userId,
           leaseId: payments.leaseId,
           propertyId: properties.id,
           amount: payments.amount,
@@ -81,6 +88,7 @@ export default async function FinancePage() {
       db
         .select({
           id: expenses.id,
+          userId: expenses.userId,
           propertyId: expenses.propertyId,
           unitId: expenses.unitId,
           category: expenses.category,
@@ -101,6 +109,8 @@ export default async function FinancePage() {
           ),
         )
         .orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
+      // Dialog dropdowns only offer properties the user can actually book
+      // records to — viewers shouldn't pick the shared read-only property.
       db
         .select({
           id: leases.id,
@@ -113,18 +123,18 @@ export default async function FinancePage() {
         .innerJoin(tenants, eq(leases.tenantId, tenants.id))
         .innerJoin(units, eq(leases.unitId, units.id))
         .innerJoin(properties, eq(units.propertyId, properties.id))
-        .where(inArray(properties.id, accessibleIds))
+        .where(inArray(properties.id, manageableIds))
         .orderBy(asc(properties.name), asc(units.name)),
       db
         .select({ id: properties.id, name: properties.name })
         .from(properties)
-        .where(inArray(properties.id, accessibleIds))
+        .where(inArray(properties.id, manageableIds))
         .orderBy(asc(properties.name)),
       db
         .select({ id: units.id, propertyId: units.propertyId, name: units.name })
         .from(units)
         .innerJoin(properties, eq(units.propertyId, properties.id))
-        .where(inArray(properties.id, accessibleIds))
+        .where(inArray(properties.id, manageableIds))
         .orderBy(asc(properties.name), asc(units.name)),
     ]);
 
@@ -232,7 +242,7 @@ export default async function FinancePage() {
               Rent and other payments received from tenants.
             </CardDescription>
           </div>
-          <PaymentFormDialog leaseOptions={leaseOptions} />
+          {canManageAny && <PaymentFormDialog leaseOptions={leaseOptions} />}
         </CardHeader>
         <CardContent>
           {paymentRows.length === 0 ? (
@@ -249,7 +259,9 @@ export default async function FinancePage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManageAny && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -279,12 +291,18 @@ export default async function FinancePage() {
                     <TableCell className="text-right font-medium">
                       {formatCurrency(p.amount)}
                     </TableCell>
-                    <TableCell>
-                      <PaymentRowActions
-                        leaseOptions={leaseOptions}
-                        payment={toPaymentValues(p)}
-                      />
-                    </TableCell>
+                    {canManageAny && (
+                      <TableCell>
+                        {p.userId === userId ||
+                        (p.propertyId != null &&
+                          manageableSet.has(p.propertyId)) ? (
+                          <PaymentRowActions
+                            leaseOptions={leaseOptions}
+                            payment={toPaymentValues(p)}
+                          />
+                        ) : null}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -301,10 +319,12 @@ export default async function FinancePage() {
               Repairs, taxes, utilities, and other property costs.
             </CardDescription>
           </div>
-          <ExpenseFormDialog
-            propertyOptions={propertyOptions}
-            unitOptions={unitOptions}
-          />
+          {canManageAny && (
+            <ExpenseFormDialog
+              propertyOptions={propertyOptions}
+              unitOptions={unitOptions}
+            />
+          )}
         </CardHeader>
         <CardContent>
           {expenseRows.length === 0 ? (
@@ -321,7 +341,9 @@ export default async function FinancePage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManageAny && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -343,13 +365,19 @@ export default async function FinancePage() {
                     <TableCell className="text-right font-medium">
                       {formatCurrency(e.amount)}
                     </TableCell>
-                    <TableCell>
-                      <ExpenseRowActions
-                        propertyOptions={propertyOptions}
-                        unitOptions={unitOptions}
-                        expense={toExpenseValues(e)}
-                      />
-                    </TableCell>
+                    {canManageAny && (
+                      <TableCell>
+                        {e.userId === userId ||
+                        (e.propertyId != null &&
+                          manageableSet.has(e.propertyId)) ? (
+                          <ExpenseRowActions
+                            propertyOptions={propertyOptions}
+                            unitOptions={unitOptions}
+                            expense={toExpenseValues(e)}
+                          />
+                        ) : null}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

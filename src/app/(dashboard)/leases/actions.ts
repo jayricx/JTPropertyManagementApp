@@ -6,7 +6,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, tenants, units } from "@/db/schema";
-import { canAccessUnit } from "@/lib/access";
+import { canManageUnit } from "@/lib/access";
 import { leaseSchema, type LeaseFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
@@ -49,7 +49,8 @@ export async function syncUnitStatus(unitId: string): Promise<void> {
   }
 }
 
-// Unit access (owned or co-owned) is checked via `canAccessUnit`.
+// Unit manage access (owned or co-owned — viewers excluded) is checked via
+// `canManageUnit`.
 
 async function ownsTenant(userId: string, tenantId: string) {
   const rows = await db
@@ -108,7 +109,7 @@ export async function createLeaseAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid lease data." };
   }
 
-  if (!(await canAccessUnit(session.user.id, parsed.data.unitId))) {
+  if (!(await canManageUnit(session.user.id, parsed.data.unitId))) {
     return { error: "Unit not found." };
   }
   if (!(await ownsTenant(session.user.id, parsed.data.tenantId))) {
@@ -140,14 +141,14 @@ export async function updateLeaseAction(
     return { error: "Missing lease id." };
   }
 
-  // Confirm the lease's unit is on a property this user can access
-  // (owned or co-owned) before touching anything.
+  // Confirm the lease's unit is on a property this user can manage
+  // (owned or co-owned — not a read-only viewer) before touching anything.
   const owned = await db
     .select({ id: leases.id, unitId: leases.unitId, endDate: leases.endDate })
     .from(leases)
     .where(eq(leases.id, leaseId))
     .limit(1);
-  if (!owned.length || !(await canAccessUnit(session.user.id, owned[0].unitId))) {
+  if (!owned.length || !(await canManageUnit(session.user.id, owned[0].unitId))) {
     return { error: "Lease not found." };
   }
 
@@ -156,7 +157,7 @@ export async function updateLeaseAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid lease data." };
   }
 
-  if (!(await canAccessUnit(session.user.id, parsed.data.unitId))) {
+  if (!(await canManageUnit(session.user.id, parsed.data.unitId))) {
     return { error: "Unit not found." };
   }
   if (!(await ownsTenant(session.user.id, parsed.data.tenantId))) {
@@ -208,7 +209,7 @@ export async function deleteLeaseAction(
     .limit(1);
   if (
     !owned.length ||
-    !(await canAccessUnit(session.user.id, owned[0].unitId))
+    !(await canManageUnit(session.user.id, owned[0].unitId))
   ) {
     return { error: "Lease not found." };
   }

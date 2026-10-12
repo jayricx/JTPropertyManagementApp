@@ -6,7 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { properties, propertyCollaborators, units, users } from "@/db/schema";
-import { canAccessProperty, isPropertyOwner } from "@/lib/access";
+import { canManageProperty, isPropertyOwner } from "@/lib/access";
 import { propertySchema, unitSchema, type UnitFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
@@ -59,8 +59,8 @@ export async function updatePropertyAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid property data." };
   }
 
-  // Co-owners may edit the property details.
-  if (!(await canAccessProperty(session.user.id, id))) {
+  // Co-owners may edit the property details; viewers may not.
+  if (!(await canManageProperty(session.user.id, id))) {
     return { error: "Property not found." };
   }
 
@@ -83,7 +83,7 @@ export async function deletePropertyAction(
   if (!session?.user) return { error: "You must be signed in." };
 
   // Deleting cascades to units, leases, and requests — owner only.
-  if (!(await canAccessProperty(session.user.id, id))) {
+  if (!(await canManageProperty(session.user.id, id))) {
     return { error: "Property not found." };
   }
   if (!(await isPropertyOwner(session.user.id, id))) {
@@ -101,22 +101,24 @@ export async function deletePropertyAction(
 }
 
 // ---------------------------------------------------------------------------
-// Co-owners — sharing is managed by the property owner only.
+// Collaborators — sharing is managed by the property owner only.
 // ---------------------------------------------------------------------------
 
 export async function addCoOwnerAction(
   propertyId: string,
   email: string,
+  role: "co_owner" | "viewer" = "co_owner",
 ): Promise<{ error?: string }> {
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
   if (!(await isPropertyOwner(session.user.id, propertyId))) {
-    return { error: "Only the property owner can manage co-owners." };
+    return { error: "Only the property owner can manage sharing." };
   }
 
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) return { error: "Enter an email address." };
+  const collaboratorRole = role === "viewer" ? "viewer" : "co_owner";
 
   const target = await db
     .select({ id: users.id, name: users.name })
@@ -142,11 +144,12 @@ export async function addCoOwnerAction(
       ),
     )
     .limit(1);
-  if (existing.length) return { error: "That user is already a co-owner." };
+  if (existing.length) return { error: "That user already has access to this property." };
 
   await db.insert(propertyCollaborators).values({
     propertyId,
     userId: target[0].id,
+    role: collaboratorRole,
     addedBy: session.user.id,
   });
 
@@ -163,7 +166,7 @@ export async function removeCoOwnerAction(
   if (!session?.user) return { error: "You must be signed in." };
 
   if (!(await isPropertyOwner(session.user.id, propertyId))) {
-    return { error: "Only the property owner can manage co-owners." };
+    return { error: "Only the property owner can manage sharing." };
   }
 
   await db
@@ -211,7 +214,7 @@ export async function createUnitAction(
   if (typeof propertyId !== "string" || !propertyId) {
     return { error: "Missing property id." };
   }
-  if (!(await canAccessProperty(session.user.id, propertyId))) {
+  if (!(await canManageProperty(session.user.id, propertyId))) {
     return { error: "Property not found." };
   }
 
@@ -236,8 +239,8 @@ export async function updateUnitAction(
   const unitId = formData.get("unitId");
   if (typeof unitId !== "string" || !unitId) return { error: "Missing unit id." };
 
-  // Confirm the unit belongs to a property this user can access
-  // (owned or co-owned) before updating.
+  // Confirm the unit belongs to a property this user can manage
+  // (owned or co-owned — not a read-only viewer) before updating.
   const owned = await db
     .select({ id: units.id, propertyId: units.propertyId })
     .from(units)
@@ -245,7 +248,7 @@ export async function updateUnitAction(
     .limit(1);
   if (
     !owned.length ||
-    !(await canAccessProperty(session.user.id, owned[0].propertyId))
+    !(await canManageProperty(session.user.id, owned[0].propertyId))
   ) {
     return { error: "Unit not found." };
   }
@@ -270,8 +273,8 @@ export async function deleteUnitAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  // Confirm the unit belongs to a property this user can access
-  // (owned or co-owned) before deleting.
+  // Confirm the unit belongs to a property this user can manage before
+  // deleting.
   const owned = await db
     .select({ id: units.id, propertyId: units.propertyId })
     .from(units)
@@ -279,7 +282,7 @@ export async function deleteUnitAction(
     .limit(1);
   if (
     !owned.length ||
-    !(await canAccessProperty(session.user.id, owned[0].propertyId))
+    !(await canManageProperty(session.user.id, owned[0].propertyId))
   ) {
     return { error: "Unit not found." };
   }

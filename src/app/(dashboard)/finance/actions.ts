@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { expenses, payments, units } from "@/db/schema";
-import { canAccessLease, canAccessProperty } from "@/lib/access";
+import { canManageLease, canManageProperty } from "@/lib/access";
 import {
   expenseSchema,
   paymentSchema,
@@ -39,11 +39,13 @@ function revalidateFinancePaths() {
 // Payments
 // ---------------------------------------------------------------------------
 
-// Lease access (owned or co-owned property) is checked via `canAccessLease`.
+// Lease manage access (owned or co-owned property — viewers excluded) is
+// checked via `canManageLease`.
 
 /**
  * A payment may be edited/deleted by its creator, or by a co-owner of the
- * property its lease belongs to. Unassigned payments stay creator-only.
+ * property its lease belongs to (viewers excluded). Unassigned payments stay
+ * creator-only.
  */
 async function canModifyPayment(userId: string, paymentId: string) {
   const rows = await db
@@ -54,7 +56,7 @@ async function canModifyPayment(userId: string, paymentId: string) {
   if (!rows.length) return false;
   if (rows[0].userId === userId) return true;
   return rows[0].leaseId
-    ? canAccessLease(userId, rows[0].leaseId)
+    ? canManageLease(userId, rows[0].leaseId)
     : Promise.resolve(false);
 }
 
@@ -83,7 +85,7 @@ export async function createPaymentAction(
 
   if (
     parsed.data.leaseId &&
-    !(await canAccessLease(session.user.id, parsed.data.leaseId))
+    !(await canManageLease(session.user.id, parsed.data.leaseId))
   ) {
     return { error: "Lease not found." };
   }
@@ -115,7 +117,7 @@ export async function updatePaymentAction(
 
   if (
     parsed.data.leaseId &&
-    !(await canAccessLease(session.user.id, parsed.data.leaseId))
+    !(await canManageLease(session.user.id, parsed.data.leaseId))
   ) {
     return { error: "Lease not found." };
   }
@@ -158,13 +160,13 @@ export async function deletePaymentAction(
 // Expenses
 // ---------------------------------------------------------------------------
 
-/** Confirm the property (and, if given, the unit within it) is accessible. */
+/** Confirm the property (and, if given, the unit within it) is manageable. */
 async function ownsExpenseTargets(
   userId: string,
   propertyId: string,
   unitId?: string,
 ) {
-  if (!(await canAccessProperty(userId, propertyId))) return false;
+  if (!(await canManageProperty(userId, propertyId))) return false;
   if (!unitId) return true;
 
   // The unit must belong to the same property the expense is booked to.
@@ -177,8 +179,8 @@ async function ownsExpenseTargets(
 }
 
 /**
- * An expense may be edited/deleted by its creator, or by anyone with access
- * to the property it's booked to (i.e. a co-owner).
+ * An expense may be edited/deleted by its creator, or by anyone who can
+ * manage the property it's booked to (i.e. a co-owner — not a viewer).
  */
 async function canModifyExpense(userId: string, expenseId: string) {
   const rows = await db
@@ -193,7 +195,7 @@ async function canModifyExpense(userId: string, expenseId: string) {
   if (!rows.length) return false;
   if (rows[0].userId === userId) return true;
   return rows[0].propertyId
-    ? canAccessProperty(userId, rows[0].propertyId)
+    ? canManageProperty(userId, rows[0].propertyId)
     : Promise.resolve(false);
 }
 

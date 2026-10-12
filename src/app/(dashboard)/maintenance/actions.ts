@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { maintenanceRequests, tenants, units } from "@/db/schema";
-import { canAccessProperty } from "@/lib/access";
+import { canManageProperty } from "@/lib/access";
 import { maintenanceSchema, type MaintenanceFormParsed } from "@/lib/validations";
 
 /** `ok` lets dialog forms close themselves after a successful mutation. */
@@ -19,13 +19,13 @@ function toFormDataRecord(formData: FormData): Record<string, string> {
   return record;
 }
 
-/** Confirm the property is accessible (owned or co-owned) and the unit is in it. */
+/** Confirm the property is manageable (owned or co-owned — not a viewer) and the unit is in it. */
 async function ownsTargets(
   userId: string,
   propertyId: string,
   unitId: string,
 ): Promise<boolean> {
-  if (!(await canAccessProperty(userId, propertyId))) return false;
+  if (!(await canManageProperty(userId, propertyId))) return false;
   const rows = await db
     .select({ id: units.id })
     .from(units)
@@ -107,8 +107,8 @@ export async function updateMaintenanceAction(
     return { error: "Missing request id." };
   }
 
-  // Requests on co-owned properties are visible to both partners, so update
-  // rights follow property access rather than who created the request.
+  // Requests on shared properties are visible to owner and co-owner alike,
+  // so update rights follow property manage access (viewers excluded).
   const [existing] = await db
     .select({
       id: maintenanceRequests.id,
@@ -120,7 +120,7 @@ export async function updateMaintenanceAction(
     .limit(1);
   if (
     !existing ||
-    !(await canAccessProperty(session.user.id, existing.propertyId))
+    !(await canManageProperty(session.user.id, existing.propertyId))
   ) {
     return { error: "Request not found." };
   }
@@ -186,7 +186,7 @@ export async function deleteMaintenanceAction(
     .limit(1);
   if (
     !existing ||
-    !(await canAccessProperty(session.user.id, existing.propertyId))
+    !(await canManageProperty(session.user.id, existing.propertyId))
   ) {
     return { error: "Request not found." };
   }

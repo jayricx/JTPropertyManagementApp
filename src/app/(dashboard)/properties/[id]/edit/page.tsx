@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { properties } from "@/db/schema";
 import { PropertyForm } from "@/components/properties/property-form";
-import { canAccessProperty } from "@/lib/access";
+import { canManageProperty } from "@/lib/access";
 import { isUuid } from "@/lib/utils";
 
 interface EditPropertyPageProps {
@@ -28,7 +28,7 @@ export default async function EditPropertyPage({
     .from(properties)
     .where(eq(properties.id, id))
     .limit(1);
-  if (!property || !(await canAccessProperty(userId, id))) notFound();
+  if (!property || !(await canManageProperty(userId, id))) notFound();
 
   return (
     <div className="space-y-6">

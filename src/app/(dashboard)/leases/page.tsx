@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DeleteLeaseButton } from "@/components/leases/delete-lease-button";
-import { accessiblePropertyIds } from "@/lib/access";
+import { accessiblePropertyIds, manageablePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { leaseStatusLabels, type LeaseStatus } from "@/lib/validations";
 
@@ -40,12 +40,19 @@ export default async function LeasesPage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
-  // Leases on owned + co-owned properties are visible.
-  const accessibleIds = await accessiblePropertyIds(userId);
+  // Leases on owned + shared properties are visible; only owner/co-owner
+  // rows are editable (viewers see the list read-only).
+  const [accessibleIds, manageableIds] = await Promise.all([
+    accessiblePropertyIds(userId),
+    manageablePropertyIds(userId),
+  ]);
+  const canManageAny = manageableIds.length > 0;
+  const manageableSet = new Set(manageableIds);
 
   const rows = await db
     .select({
       id: leases.id,
+      propertyId: properties.id,
       startDate: leases.startDate,
       endDate: leases.endDate,
       rentAmount: leases.rentAmount,
@@ -77,10 +84,12 @@ export default async function LeasesPage() {
             Track lease terms, deposits, and renewal dates.
           </p>
         </div>
-        <Button render={<Link href="/leases/new" />}>
-          <PlusIcon />
-          Add lease
-        </Button>
+        {canManageAny && (
+          <Button render={<Link href="/leases/new" />}>
+            <PlusIcon />
+            Add lease
+          </Button>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -92,11 +101,13 @@ export default async function LeasesPage() {
               leases automatically mark their unit as occupied.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button render={<Link href="/leases/new" />}>
-              Add your first lease
-            </Button>
-          </CardContent>
+          {canManageAny && (
+            <CardContent>
+              <Button render={<Link href="/leases/new" />}>
+                Add your first lease
+              </Button>
+            </CardContent>
+          )}
         </Card>
       ) : (
         <Card>
@@ -110,7 +121,9 @@ export default async function LeasesPage() {
                   <TableHead className="text-right">Rent</TableHead>
                   <TableHead className="text-right">Deposit</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManageAny && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -154,19 +167,23 @@ export default async function LeasesPage() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          render={<Link href={`/leases/${l.id}/edit`}>Edit</Link>}
-                        />
-                        <DeleteLeaseButton
-                          leaseId={l.id}
-                          leaseLabel={`${l.tenantName} — ${l.unitName}`}
-                        />
-                      </div>
-                    </TableCell>
+                    {canManageAny && (
+                      <TableCell>
+                        {manageableSet.has(l.propertyId) ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              render={<Link href={`/leases/${l.id}/edit`}>Edit</Link>}
+                            />
+                            <DeleteLeaseButton
+                              leaseId={l.id}
+                              leaseLabel={`${l.tenantName} — ${l.unitName}`}
+                            />
+                          </div>
+                        ) : null}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
