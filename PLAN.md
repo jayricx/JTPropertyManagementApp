@@ -65,15 +65,15 @@ A web app for landlords to register properties, track income/expenses, manage te
 - **W1–2:** Project setup, auth, DB schema, dashboard shell ✅
 - **W3–4:** Properties & units CRUD ✅
 - **W5–6:** Tenants & leases ✅
-- **W7–8:** Income/expense tracking + reports ✅ (finance CRUD + totals; per-property reports pending)
+- **W7–8:** Income/expense tracking + reports ✅ (finance CRUD, per-property P&L, cash-flow/occupancy reports with CSV export)
 - **W9–10:** Maintenance requests ✅ (status workflow + resolvedAt stamping; photos pending)
 - **W11–12:** Testing, polish, deploy, beta launch
 
 ## Progress
 
-- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals and per-property P&L), maintenance requests (priority/status badges, resolvedAt lifecycle), lease-end email alerts (Resend + daily Vercel cron, one reminder per lease term, re-armed when the end date moves), mobile navigation (sticky header + slide-in drawer below `md`), **co-ownership** (`property_collaborators` table; owners share a property by email from the property page; co-owners get full manage access — units, leases, finance, maintenance — everywhere the app scopes by property via `src/lib/access.ts`; owner-only: deleting the property and managing the co-owner list; tenants stay per-creator — co-owners see a partner's tenants read-only; the `role` column is ready for a future read-only "viewer" share).
-- **Deferred:** maintenance/property photos (needs R2/S3 storage), recurring rent automation (needs Stripe) — both Phase 2.
-- **Next:** Vercel deployment (env vars: DATABASE_URL, AUTH_SECRET, AUTH_URL, CRON_SECRET, RESEND_API_KEY, EMAIL_FROM).
+- **Done:** Next.js 16 + React 19, Auth.js v5, Drizzle + Neon (neon-http), shadcn/ui (Base UI), Philippine localization (PHP currency, PH address defaults, country dropdown with location detection), properties & units CRUD, tenants & leases CRUD (with unit occupancy sync), finance (payments + expenses with summary totals and per-property P&L), maintenance requests (priority/status badges, resolvedAt lifecycle), lease-end email alerts (Resend + daily Vercel cron, one reminder per lease term, re-armed when the end date moves), mobile navigation (sticky header + slide-in drawer below `md`), **co-ownership** (`property_collaborators` table; owners share a property by email from the property page; co-owners get full manage access — units, leases, finance, maintenance — everywhere the app scopes by property via `src/lib/access.ts`; owner-only: deleting the property and managing the co-owner list; tenants stay per-creator — co-owners see a partner's tenants read-only; the `role` column is ready for a future read-only "viewer" share), **reports + CSV export** (`/reports` with 3/6/12/24-month periods: cash-flow chart + table, P&L by property, occupancy history derived from lease date overlaps; CSV downloads via `/api/reports/csv` sharing one engine in `src/lib/reports.ts` so screen and export numbers always match).
+- **Deferred:** maintenance/property photos (needs R2/S3 storage — no credentials yet; build with local-storage dev fallback when starting), recurring rent automation (needs Stripe — no credentials yet) — both Phase 2.
+- **Next:** Vercel deployment (env vars: DATABASE_URL, AUTH_SECRET, AUTH_URL, CRON_SECRET, RESEND_API_KEY, EMAIL_FROM). Remaining Phase 2: tenant portal, team seats (viewer role), photos, Stripe rent collection.
 
 ## Quality & Security
 

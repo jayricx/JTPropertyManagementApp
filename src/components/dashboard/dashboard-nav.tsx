@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   Building2,
+  ChartColumnBig,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/leases", label: "Leases", icon: FileText },
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/maintenance", label: "Maintenance", icon: Wrench },
+  { href: "/reports", label: "Reports", icon: ChartColumnBig },
 ];
 
 function NavLinks({
