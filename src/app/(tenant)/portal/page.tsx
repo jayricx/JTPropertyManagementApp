@@ -1,4 +1,5 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
+import { CreditCardIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import {
@@ -9,7 +10,9 @@ import {
   tenants,
   units,
 } from "@/db/schema";
+import { startRentPaymentAction } from "@/app/(tenant)/portal/actions";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -26,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TenantRequestForm } from "@/components/portal/tenant-request-form";
+import { stripeEnabled } from "@/lib/rent-payment";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   leaseStatusLabels,
@@ -64,7 +68,12 @@ const priorityClass: Record<MaintenancePriority, string> = {
   low: "border-border bg-muted text-muted-foreground",
 };
 
-export default async function TenantPortalPage() {
+export default async function TenantPortalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ payment?: string }>;
+}) {
+  const { payment } = await searchParams;
   const session = await auth();
   const userId = session?.user?.id;
   // The portal layout redirects unauthenticated visitors.
@@ -151,6 +160,26 @@ export default async function TenantPortalPage() {
 
   return (
     <div className="space-y-6">
+      {/* Payment result banners — from Stripe's return URL or the local
+          checkout's redirect. */}
+      {payment === "success" && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400">
+          {stripeEnabled()
+            ? "Payment successful — your receipt will appear in your payment history below in a few seconds."
+            : "Payment recorded — thank you! It is now in your payment history below."}
+        </div>
+      )}
+      {payment === "cancelled" && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+          Payment cancelled — no charge was made.
+        </div>
+      )}
+      {payment === "error" && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+          We couldn&apos;t start a payment for that lease. Please try again or
+          contact your landlord.
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
           Welcome, {tenant.firstName}
@@ -290,15 +319,32 @@ export default async function TenantPortalPage() {
               : "No active lease"}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>
-            Online payments are coming soon. Until then, your landlord records
-            the payments they receive — your history is right below.
-          </p>
-          {lastPayment && (
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          {active ? (
+            <>
+              <form action={startRentPaymentAction}>
+                <input type="hidden" name="leaseId" value={active.id} />
+                <Button type="submit">
+                  <CreditCardIcon />
+                  Pay {formatCurrency(active.rentAmount)}
+                </Button>
+              </form>
+              <p>
+                {stripeEnabled()
+                  ? "You will be redirected to Stripe to pay securely by card."
+                  : "Card payments run in demo mode until Stripe keys are configured — confirming records the payment right away."}
+              </p>
+              {lastPayment && (
+                <p>
+                  Last payment recorded: {formatCurrency(lastPayment.amount)} on{" "}
+                  {formatDate(lastPayment.paidDate)}.
+                </p>
+              )}
+            </>
+          ) : (
             <p>
-              Last payment recorded: {formatCurrency(lastPayment.amount)} on{" "}
-              {formatDate(lastPayment.paidDate)}.
+              You can pay rent once your landlord sets up an active lease for
+              you.
             </p>
           )}
         </CardContent>

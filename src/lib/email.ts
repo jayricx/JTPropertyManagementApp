@@ -175,3 +175,34 @@ export async function sendLeaseEndAlerts(
 
   return results.filter((r) => r.delivered).length;
 }
+
+export interface PaymentReceipt {
+  to: string;
+  tenantName: string;
+  /** Preformatted display amount, e.g. "₱3,000". */
+  amountText: string;
+  paidDate: Date;
+  unitName: string;
+  propertyName: string;
+}
+
+/** Confirm to the tenant that a rent payment was received. */
+export async function sendPaymentReceipt(r: PaymentReceipt): Promise<SendResult> {
+  const dateText = formatDateShort(r.paidDate);
+  const unitLabel = escapeHtml(`${r.unitName} (${r.propertyName})`);
+  const tenantLabel = escapeHtml(r.tenantName);
+  const amountLabel = escapeHtml(r.amountText);
+  const portalUrl = `${APP_URL}/portal`;
+
+  return sendEmail({
+    to: r.to,
+    subject: `Payment received: ${r.amountText} rent`,
+    text: `Hi ${r.tenantName},\n\nWe received your rent payment of ${r.amountText} on ${dateText} for ${r.unitName} (${r.propertyName}).\n\nView your payment history: ${portalUrl}\n\n— JT Property Management`,
+    html: emailShell(
+      "Payment received",
+      `<p>Hi ${tenantLabel},</p>
+       <p>We received your rent payment of <strong>${amountLabel}</strong> on <strong>${dateText}</strong> for <strong>${unitLabel}</strong>.</p>
+       <p><a href="${portalUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View payment history</a></p>`,
+    ),
+  });
+}
