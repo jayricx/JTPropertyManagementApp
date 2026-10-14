@@ -35,3 +35,33 @@ export function formatDate(value: Date | string | null | undefined): string {
     year: "numeric",
   });
 }
+
+/**
+ * ISO dates (YYYY-MM-DD) for `day` in every month from `startMonth` to
+ * `endMonth` inclusive (both "YYYY-MM"). Each date is clamped to its month's
+ * length, so day 31 gives Jan 31, Feb 28/29, Apr 30, … Callers cap the range
+ * (the payment dialog allows 36 months).
+ */
+export function monthRangeDates(
+  startMonth: string,
+  endMonth: string,
+  day: number,
+): string[] {
+  const [startYear, startMon] = startMonth.split("-").map(Number);
+  const [endYear, endMon] = endMonth.split("-").map(Number);
+  const dates: string[] = [];
+  let year = startYear;
+  let month = startMon;
+  while (year < endYear || (year === endYear && month <= endMon)) {
+    // Day 0 of the next month is the last day of this month.
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const dd = String(Math.min(day, lastDay)).padStart(2, "0");
+    dates.push(`${year}-${String(month).padStart(2, "0")}-${dd}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return dates;
+}

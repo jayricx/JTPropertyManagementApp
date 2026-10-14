@@ -6,8 +6,10 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { expenses, payments, units } from "@/db/schema";
 import { canManageLease, canManageProperty } from "@/lib/access";
+import { monthRangeDates } from "@/lib/utils";
 import {
   expenseSchema,
+  paymentCreateSchema,
   paymentSchema,
   type ExpenseFormParsed,
   type PaymentFormParsed,
@@ -78,21 +80,53 @@ export async function createPaymentAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  const parsed = paymentSchema.safeParse(toFormDataRecord(formData));
+  const parsed = paymentCreateSchema.safeParse(toFormDataRecord(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid payment data." };
   }
+  const data = parsed.data;
+
+  if (data.mode === "range") {
+    // Backfill: one payment per month across the range. The schema requires a
+    // lease for ranges, so this path always runs under manage rights.
+    const leaseId = data.leaseId;
+    if (!leaseId) return { error: "Please select a lease." };
+    if (!(await canManageLease(session.user.id, leaseId))) {
+      return { error: "Lease not found." };
+    }
+
+    const dates = monthRangeDates(
+      data.startMonth,
+      data.endMonth,
+      Number(data.day),
+    );
+    await db.insert(payments).values(
+      dates.map((iso) => ({
+        leaseId,
+        userId: session.user.id,
+        amount: String(data.amount ?? 0),
+        paidDate: toUtcDate(iso),
+        method: data.method,
+        type: data.type,
+        notes: data.notes,
+      })),
+    );
+
+    revalidateFinancePaths();
+    return { ok: true };
+  }
 
   if (
-    parsed.data.leaseId &&
-    !(await canManageLease(session.user.id, parsed.data.leaseId))
+    data.leaseId &&
+    !(await canManageLease(session.user.id, data.leaseId))
   ) {
     return { error: "Lease not found." };
   }
 
-  await db
-    .insert(payments)
-    .values({ ...paymentDbValues(parsed.data), userId: session.user.id });
+  await db.insert(payments).values({
+    ...paymentDbValues(data),
+    userId: session.user.id,
+  });
 
   revalidateFinancePaths();
   return { ok: true };

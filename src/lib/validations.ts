@@ -243,6 +243,93 @@ export const paymentSchema = z
 export type PaymentFormValues = z.input<typeof paymentSchema>;
 export type PaymentFormParsed = z.output<typeof paymentSchema>;
 
+/**
+ * The "Add payment" dialog supports two modes:
+ * - `single` — one record on the chosen date (lease optional);
+ * - `range` — backfill: one record per month between `startMonth` and
+ *   `endMonth`, each stamped on `day` of that month (clamped to the month's
+ *   length) and tied to a lease. Range fields are only checked in range mode;
+ *   `paidDate` stays required because the dialog prefills it even when the
+ *   date input is hidden.
+ */
+export const paymentCreateSchema = z
+  .object({
+    mode: z.enum(["single", "range"]),
+    leaseId: optionalUuid("Please select a lease"),
+    amount: optionalNumber(0, 1_000_000),
+    paidDate: isoDate,
+    startMonth: z.string(),
+    endMonth: z.string(),
+    day: z.string(),
+    method: z.enum(paymentMethods),
+    type: z.enum(paymentTypes),
+    notes: optionalText(5000),
+  })
+  .refine((v) => v.amount !== undefined, {
+    message: "Amount is required",
+    path: ["amount"],
+  })
+  .superRefine((v, ctx) => {
+    if (v.mode !== "range") return;
+
+    if (!v.leaseId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["leaseId"],
+        message: "Please select a lease",
+      });
+    }
+
+    const monthRe = /^\d{4}-(0[1-9]|1[0-2])$/;
+    const startOk = monthRe.test(v.startMonth);
+    const endOk = monthRe.test(v.endMonth);
+    if (!startOk) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["startMonth"],
+        message: "Pick a month",
+      });
+    }
+    if (!endOk) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["endMonth"],
+        message: "Pick a month",
+      });
+    }
+    if (startOk && endOk) {
+      // "YYYY-MM" compares correctly in lexicographic order.
+      if (v.endMonth < v.startMonth) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["endMonth"],
+          message: "Must be on or after the start month",
+        });
+      } else {
+        const [sy, sm] = v.startMonth.split("-").map(Number);
+        const [ey, em] = v.endMonth.split("-").map(Number);
+        const months = (ey - sy) * 12 + (em - sm) + 1;
+        if (months > 36) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["endMonth"],
+            message: "You can add up to 36 months at a time",
+          });
+        }
+      }
+    }
+
+    if (!/^\d{1,2}$/.test(v.day) || Number(v.day) < 1 || Number(v.day) > 31) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["day"],
+        message: "Day must be between 1 and 31",
+      });
+    }
+  });
+export type PaymentCreateFormValues = z.input<typeof paymentCreateSchema>;
+export type PaymentCreateFormParsed = z.output<typeof paymentCreateSchema>;
+
 export const expenseCategories = [
   "repair",
   "maintenance",

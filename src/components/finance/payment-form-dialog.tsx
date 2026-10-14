@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useTransition, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PencilIcon, PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,18 +33,22 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  paymentCreateSchema,
   paymentMethods,
   paymentMethodLabels,
-  paymentSchema,
   paymentTypes,
   paymentTypeLabels,
-  type PaymentFormParsed,
+  type PaymentCreateFormParsed,
+  type PaymentCreateFormValues,
   type PaymentFormValues,
 } from "@/lib/validations";
+import { formatDate, monthRangeDates } from "@/lib/utils";
 import {
   createPaymentAction,
   updatePaymentAction,
 } from "@/app/(dashboard)/finance/actions";
+
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** Today's date in the browser's local timezone, as an ISO date string. */
 function todayIso(): string {
@@ -65,13 +69,19 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // Create mode only: record a single payment, or backfill a month range.
+  const [mode, setMode] = useState<"single" | "range">("single");
 
-  const form = useForm<PaymentFormValues, unknown, PaymentFormParsed>({
-    resolver: zodResolver(paymentSchema),
+  const form = useForm<PaymentCreateFormValues, unknown, PaymentCreateFormParsed>({
+    resolver: zodResolver(paymentCreateSchema),
     defaultValues: {
+      mode: "single",
       leaseId: payment?.leaseId ?? "",
       amount: payment?.amount ?? "",
       paidDate: payment?.paidDate ?? "",
+      startMonth: "",
+      endMonth: "",
+      day: "15",
       method: payment?.method ?? "cash",
       type: payment?.type ?? "rent",
       notes: payment?.notes ?? "",
@@ -86,7 +96,38 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
     }
   }, [open, payment, form]);
 
-  function onSubmit(values: PaymentFormParsed) {
+  // Live preview for range mode: "6 payments: Jan 31, 2026 → Jun 30, 2026".
+  const startMonth = useWatch({ control: form.control, name: "startMonth" }) ?? "";
+  const endMonth = useWatch({ control: form.control, name: "endMonth" }) ?? "";
+  const day = useWatch({ control: form.control, name: "day" }) ?? "";
+  const preview =
+    mode === "range" &&
+    MONTH_RE.test(startMonth) &&
+    MONTH_RE.test(endMonth) &&
+    endMonth >= startMonth &&
+    /^\d{1,2}$/.test(day) &&
+    Number(day) >= 1 &&
+    Number(day) <= 31
+      ? monthRangeDates(startMonth, endMonth, Number(day))
+      : null;
+  const previewText = preview
+    ? `${preview.length} payment${preview.length === 1 ? "" : "s"}: ${formatDate(preview[0])} → ${formatDate(preview[preview.length - 1])}`
+    : null;
+
+  function switchMode(next: "single" | "range") {
+    setMode(next);
+    setError(null);
+    // `mode` drives schema validation — keep the form value in sync with the
+    // visible mode or submits always validate as "single".
+    form.setValue("mode", next);
+    // The date input is hidden in range mode but the schema still requires a
+    // valid value — make sure one is filled before switching away.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.getValues("paidDate") ?? "")) {
+      form.setValue("paidDate", todayIso());
+    }
+  }
+
+  function onSubmit(values: PaymentCreateFormParsed) {
     const formData = new FormData();
     Object.entries(values).forEach(([key, value]) => {
       formData.set(key, value == null ? "" : String(value));
@@ -103,6 +144,7 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
       // Success — close and reset the dialog.
       setOpen(false);
       form.reset();
+      setMode("single");
     });
   }
 
@@ -111,7 +153,10 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setError(null);
+        if (!next) {
+          setError(null);
+          setMode("single");
+        }
       }}
     >
       <DialogTrigger
@@ -140,7 +185,9 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
           <DialogDescription>
             {payment
               ? "Update this income record."
-              : "Record rent or other income received from a tenant."}
+              : mode === "range"
+                ? "Backfill several months at once — one payment record per month."
+                : "Record rent or other income received from a tenant."}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -149,41 +196,143 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
             className="space-y-4"
             noValidate
           >
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="amount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Amount (₱)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        step="0.01"
-                        placeholder="1500"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="paidDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Date received</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            {!payment && (
+              <div className="flex gap-1 rounded-lg border p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "single" ? "secondary" : "ghost"}
+                  className="flex-1"
+                  onClick={() => switchMode("single")}
+                >
+                  Single payment
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "range" ? "secondary" : "ghost"}
+                  className="flex-1"
+                  onClick={() => switchMode("range")}
+                >
+                  Multiple months
+                </Button>
+              </div>
+            )}
+            {mode === "single" ? (
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount (₱)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step="0.01"
+                          placeholder="1500"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="paidDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date received</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount per month (₱)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step="0.01"
+                          placeholder="1500"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="startMonth"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>From month</FormLabel>
+                        <FormControl>
+                          <Input type="month" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="endMonth"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>To month</FormLabel>
+                        <FormControl>
+                          <Input type="month" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="day"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Day of month</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={31}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex items-center pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      {previewText ??
+                        "One record per month; short months are capped (e.g. day 31 → Feb 28)."}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -256,7 +405,11 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
                   <FormLabel>Lease</FormLabel>
                   <Select
                     items={[
-                      { value: "", label: "Not linked to a lease" },
+                      {
+                        value: "",
+                        label:
+                          mode === "range" ? "Select a lease" : "Not linked to a lease",
+                      },
                       ...leaseOptions.map((l) => ({
                         value: l.id,
                         label: l.label,
@@ -271,7 +424,9 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Not linked to a lease</SelectItem>
+                      <SelectItem value="">
+                        {mode === "range" ? "Select a lease" : "Not linked to a lease"}
+                      </SelectItem>
                       {leaseOptions.map((l) => (
                         <SelectItem key={l.id} value={l.id}>
                           {l.label}
@@ -307,7 +462,13 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
                 Cancel
               </DialogClose>
               <Button type="submit" disabled={pending}>
-                {pending ? "Saving…" : payment ? "Save changes" : "Add payment"}
+                {pending
+                  ? "Saving…"
+                  : payment
+                    ? "Save changes"
+                    : mode === "range"
+                      ? "Add payments"
+                      : "Add payment"}
               </Button>
             </DialogFooter>
           </form>
