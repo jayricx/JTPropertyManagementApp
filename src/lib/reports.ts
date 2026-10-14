@@ -36,6 +36,29 @@ export function normalizeMonths(raw: string | null | undefined): number {
   return Math.min(MAX_REPORT_MONTHS, Math.trunc(n));
 }
 
+const MAX_REPORT_PROPERTIES = 200;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Parse a `?properties=` value (comma-separated ids) into a filter list.
+ * Returns null when nothing usable is present — meaning "no filter".
+ */
+export function normalizePropertyFilter(
+  raw: string | null | undefined,
+): string[] | null {
+  if (!raw) return null;
+  const ids = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => UUID_RE.test(s)),
+    ),
+  ];
+  return ids.length ? ids.slice(0, MAX_REPORT_PROPERTIES) : null;
+}
+
 export interface MonthBucket {
   key: string; // "2026-01"
   label: string; // "Jan 2026"
@@ -138,23 +161,34 @@ function finalizePnl(pnlMap: Map<string, PnlRow>): PnlRow[] {
  * Build every report for the accessible portfolio over the last `months`
  * calendar months. One function feeds both the page and the CSV route so
  * the numbers can never drift apart.
+ *
+ * `propertyFilter` narrows every figure to the given properties (records
+ * with no property — "unassigned" — drop out while a filter is active).
+ * It is intersected with the user's accessible properties here, so a
+ * crafted id list can never widen access.
  */
 export async function getReportData(
   userId: string,
   months: number,
+  propertyFilter: string[] | null = null,
 ): Promise<ReportData> {
   const buckets = monthBuckets(months);
   const from = buckets[0].start;
   const to = buckets[buckets.length - 1].end;
   const now = new Date();
   const accessibleIds = await accessiblePropertyIds(userId);
+  const accessibleSet = new Set(accessibleIds);
+  const requested = propertyFilter?.filter((id) => accessibleSet.has(id));
+  const filtered = !!requested?.length;
+  // With no filter (or nothing usable requested), keep the full scope.
+  const scopeIds = requested?.length ? requested : accessibleIds;
 
   const [propertyRows, paymentRows, expenseRows, leaseRows, unitRows] =
     await Promise.all([
       db
         .select({ id: properties.id, name: properties.name })
         .from(properties)
-        .where(inArray(properties.id, accessibleIds)),
+        .where(inArray(properties.id, scopeIds)),
       db
         .select({
           amount: payments.amount,
@@ -170,11 +204,15 @@ export async function getReportData(
           and(
             gte(payments.paidDate, from),
             lte(payments.paidDate, to),
-            // Own records (incl. unassigned) plus accessible properties.
-            or(
-              eq(payments.userId, userId),
-              inArray(properties.id, accessibleIds),
-            ),
+            // A property filter counts only those properties (payments with
+            // no lease/property drop out). Otherwise: own records (incl.
+            // unassigned) plus accessible properties.
+            filtered
+              ? inArray(properties.id, scopeIds)
+              : or(
+                  eq(payments.userId, userId),
+                  inArray(properties.id, scopeIds),
+                ),
           ),
         ),
       db
@@ -188,10 +226,12 @@ export async function getReportData(
           and(
             gte(expenses.expenseDate, from),
             lte(expenses.expenseDate, to),
-            or(
-              eq(expenses.userId, userId),
-              inArray(expenses.propertyId, accessibleIds),
-            ),
+            filtered
+              ? inArray(expenses.propertyId, scopeIds)
+              : or(
+                  eq(expenses.userId, userId),
+                  inArray(expenses.propertyId, scopeIds),
+                ),
           ),
         ),
       db
@@ -204,7 +244,7 @@ export async function getReportData(
         .innerJoin(units, eq(leases.unitId, units.id))
         .where(
           and(
-            inArray(units.propertyId, accessibleIds),
+            inArray(units.propertyId, scopeIds),
             // Leases starting after the period can never affect it.
             lte(leases.startDate, to),
           ),
@@ -213,7 +253,7 @@ export async function getReportData(
       db
         .select({ id: units.id, createdAt: units.createdAt })
         .from(units)
-        .where(inArray(units.propertyId, accessibleIds)),
+        .where(inArray(units.propertyId, scopeIds)),
     ]);
 
   const propertyName = new Map(propertyRows.map((p) => [p.id, p.name]));

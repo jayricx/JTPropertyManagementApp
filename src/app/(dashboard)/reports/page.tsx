@@ -18,28 +18,36 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ReportPropertyFilter } from "@/components/reports/report-property-filter";
+import { listAccessibleProperties } from "@/lib/access";
 import {
   getReportData,
   normalizeMonths,
+  normalizePropertyFilter,
   REPORT_MONTH_OPTIONS,
 } from "@/lib/reports";
 import { cn, formatCurrency } from "@/lib/utils";
 
 interface ReportsPageProps {
-  searchParams: Promise<{ months?: string }>;
+  searchParams: Promise<{ months?: string; properties?: string }>;
 }
 
-function CsvButton({ report, months }: { report: string; months: number }) {
+function CsvButton({
+  report,
+  months,
+  properties,
+}: {
+  report: string;
+  months: number;
+  properties: string[] | null;
+}) {
+  const params = new URLSearchParams({ report, months: String(months) });
+  if (properties?.length) params.set("properties", properties.join(","));
   return (
     <Button
       variant="outline"
       size="sm"
-      render={
-        <a
-          href={`/api/reports/csv?report=${report}&months=${months}`}
-          download
-        />
-      }
+      render={<a href={`/api/reports/csv?${params.toString()}`} download />}
     >
       <DownloadIcon />
       CSV
@@ -48,16 +56,36 @@ function CsvButton({ report, months }: { report: string; months: number }) {
 }
 
 export default async function ReportsPage({ searchParams }: ReportsPageProps) {
-  const { months: monthsRaw } = await searchParams;
+  const { months: monthsRaw, properties: propertiesRaw } = await searchParams;
   const months = normalizeMonths(monthsRaw);
+  const requestedIds = normalizePropertyFilter(propertiesRaw);
 
   const session = await auth();
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
-  const data = await getReportData(userId, months);
+  // Options come first so the requested ids can be sanitized before the
+  // report runs — labels, CSV links, and data then agree on one filter.
+  const options = await listAccessibleProperties(userId);
+  const optionIds = new Set(options.map((o) => o.id));
+  const usable = requestedIds?.filter((id) => optionIds.has(id)) ?? null;
+  // All-or-none is equivalent to no filter — keep the URL canonical.
+  const propertyFilter =
+    usable && usable.length > 0 && usable.length < options.length
+      ? usable
+      : null;
+
+  const data = await getReportData(userId, months, propertyFilter);
   const { cashFlow, pnl, occupancy, totals } = data;
+
+  // Period links keep the active property filter (and vice versa).
+  const reportHref = (m: number) => {
+    const params = new URLSearchParams();
+    params.set("months", String(m));
+    if (propertyFilter?.length) params.set("properties", propertyFilter.join(","));
+    return `/reports?${params.toString()}`;
+  };
 
   const flowMax = Math.max(
     1,
@@ -75,26 +103,33 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             Cash flow, profitability, and occupancy across your portfolio.
           </p>
         </div>
-        <div
-          role="group"
-          aria-label="Report period"
-          className="flex rounded-lg border p-1"
-        >
-          {REPORT_MONTH_OPTIONS.map((m) => (
-            <Link
-              key={m}
-              href={`/reports?months=${m}`}
-              aria-current={m === months ? "page" : undefined}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                m === months
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {m}M
-            </Link>
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <ReportPropertyFilter
+            options={options}
+            selected={propertyFilter}
+            months={months}
+          />
+          <div
+            role="group"
+            aria-label="Report period"
+            className="flex rounded-lg border p-1"
+          >
+            {REPORT_MONTH_OPTIONS.map((m) => (
+              <Link
+                key={m}
+                href={reportHref(m)}
+                aria-current={m === months ? "page" : undefined}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  m === months
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {m}M
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -118,7 +153,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               over the last {months} months
             </CardDescription>
           </div>
-          <CsvButton report="cashflow" months={months} />
+          <CsvButton
+            report="cashflow"
+            months={months}
+            properties={propertyFilter}
+          />
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
@@ -242,7 +281,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               Income and expenses per property over the last {months} months.
             </CardDescription>
           </div>
-          <CsvButton report="pnl" months={months} />
+          <CsvButton report="pnl" months={months} properties={propertyFilter} />
         </CardHeader>
         <CardContent>
           {pnl.length === 0 ? (
@@ -316,7 +355,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               over the last {months} months
             </CardDescription>
           </div>
-          <CsvButton report="occupancy" months={months} />
+          <CsvButton
+            report="occupancy"
+            months={months}
+            properties={propertyFilter}
+          />
         </CardHeader>
         <CardContent>
           <Table>

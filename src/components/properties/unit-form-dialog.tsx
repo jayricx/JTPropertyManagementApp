@@ -131,7 +131,7 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
                 </FormItem>
               )}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="bedrooms"
@@ -172,7 +172,7 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
                 )}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="rentAmount"

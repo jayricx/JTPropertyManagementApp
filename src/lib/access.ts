@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db/client";
 import { leases, properties, propertyCollaborators, units } from "@/db/schema";
 
@@ -25,6 +25,19 @@ export async function accessiblePropertyIds(userId: string): Promise<string[]> {
       .where(eq(propertyCollaborators.userId, userId)),
   ]);
   return [...owned.map((r) => r.id), ...shared.map((r) => r.propertyId)];
+}
+
+/** Accessible properties (owned + co-owned) with names, for filter UIs. */
+export async function listAccessibleProperties(
+  userId: string,
+): Promise<{ id: string; name: string }[]> {
+  const ids = await accessiblePropertyIds(userId);
+  if (!ids.length) return [];
+  return db
+    .select({ id: properties.id, name: properties.name })
+    .from(properties)
+    .where(inArray(properties.id, ids))
+    .orderBy(asc(properties.name));
 }
 
 /** True when the user owns the property outright (not merely co-owns it). */

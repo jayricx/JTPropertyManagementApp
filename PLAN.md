@@ -50,8 +50,9 @@ A web app for landlords to register properties, track income/expenses, manage te
 
 - Stripe rent collection (payment links), automated receipts, reminders, late fees — ✅ checkout + receipts built (demo mode until Stripe keys); reminders/late fees parked until a live Stripe account
 - Tenant portal (view lease, pay rent, submit requests) ✅
-- Reports: cash flow, P&L, occupancy history; CSV export ✅
+- Reports: cash flow, P&L, occupancy history; CSV export ✅ — plus a multi-select **property filter** (dropdown of all owned/co-owned properties; selection lives in the URL as `?properties=`, survives period switches, applies to every chart/table and CSV download; unknown/inaccessible ids are ignored server-side)
 - Team seats (property managers with limited roles) ✅
+- Mobile display audit + fixes: Playwright sweeps of every route at 390/360px (no horizontal overflow anywhere); dialog form grids now stack below `sm` ✅
 
 ## Phase 3
 

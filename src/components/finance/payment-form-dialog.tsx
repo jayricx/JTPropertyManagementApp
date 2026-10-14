@@ -219,7 +219,7 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
               </div>
             )}
             {mode === "single" ? (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="amount"
@@ -276,7 +276,7 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="startMonth"
@@ -304,7 +304,7 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
                     )}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="day"
@@ -333,7 +333,7 @@ export function PaymentFormDialog({ leaseOptions, payment }: PaymentFormDialogPr
                 </div>
               </>
             )}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="type"

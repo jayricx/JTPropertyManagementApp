@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import {
   getReportData,
   normalizeMonths,
+  normalizePropertyFilter,
   toCsv,
   type ReportData,
 } from "@/lib/reports";
@@ -97,7 +98,8 @@ export async function GET(request: NextRequest) {
   }
 
   const months = normalizeMonths(searchParams.get("months"));
-  const data = await getReportData(session.user.id, months);
+  const propertyFilter = normalizePropertyFilter(searchParams.get("properties"));
+  const data = await getReportData(session.user.id, months, propertyFilter);
   const doc = buildCsv(report, data);
   const today = new Date().toISOString().slice(0, 10);
 
