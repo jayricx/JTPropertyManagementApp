@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
+import { normalizePropertyFilter } from "@/lib/property-filter";
 import {
   getReportData,
   normalizeMonths,
-  normalizePropertyFilter,
   toCsv,
   type ReportData,
 } from "@/lib/reports";

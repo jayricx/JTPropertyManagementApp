@@ -24,7 +24,16 @@ import { ExpenseFormDialog } from "@/components/finance/expense-form-dialog";
 import { ExpenseRowActions } from "@/components/finance/expense-row-actions";
 import { PaymentFormDialog } from "@/components/finance/payment-form-dialog";
 import { PaymentRowActions } from "@/components/finance/payment-row-actions";
-import { accessiblePropertyIds, manageablePropertyIds } from "@/lib/access";
+import { PropertyFilter } from "@/components/filters/property-filter";
+import {
+  accessiblePropertyIds,
+  listAccessibleProperties,
+  manageablePropertyIds,
+} from "@/lib/access";
+import {
+  normalizePropertyFilter,
+  sanitizePropertySelection,
+} from "@/lib/property-filter";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   expenseCategoryLabels,
@@ -39,7 +48,12 @@ function toInputDate(value: Date | null): string {
   return value ? value.toISOString().slice(0, 10) : "";
 }
 
-export default async function FinancePage() {
+interface FinancePageProps {
+  searchParams: Promise<{ properties?: string }>;
+}
+
+export default async function FinancePage({ searchParams }: FinancePageProps) {
+  const { properties: propertiesRaw } = await searchParams;
   const session = await auth();
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
@@ -55,7 +69,7 @@ export default async function FinancePage() {
   const canManageAny = manageableIds.length > 0;
   const manageableSet = new Set(manageableIds);
 
-  const [paymentRows, expenseRows, leaseRows, propertyRows, unitRows] =
+  const [allPayments, allExpenses, leaseRows, propertyRows, unitRows, filterOptions] =
     await Promise.all([
       db
         .select({
@@ -136,7 +150,32 @@ export default async function FinancePage() {
         .innerJoin(properties, eq(units.propertyId, properties.id))
         .where(inArray(properties.id, manageableIds))
         .orderBy(asc(properties.name), asc(units.name)),
+      // Filter options cover everything the user can reach (owned +
+      // co-owned) — filtering is a view, not an edit scope, so the dialog
+      // dropdowns below keep their own manageable-only lists.
+      listAccessibleProperties(userId),
     ]);
+
+  // Property filter (`?properties=`, shared with the Reports filter).
+  // `null` = no filter; `[]` = "deselect all", which shows an empty ledger.
+  const propertyFilter = sanitizePropertySelection(
+    normalizePropertyFilter(propertiesRaw),
+    filterOptions.map((o) => o.id),
+  );
+  const isFiltered = propertyFilter !== null;
+  const selection = isFiltered ? new Set(propertyFilter) : null;
+  // Records booked to no property ("Not linked"/unassigned) belong to no
+  // property, so they drop out whenever a filter is active.
+  const paymentRows = selection
+    ? allPayments.filter(
+        (p) => p.propertyId !== null && selection.has(p.propertyId),
+      )
+    : allPayments;
+  const expenseRows = selection
+    ? allExpenses.filter(
+        (e) => e.propertyId !== null && selection.has(e.propertyId),
+      )
+    : allExpenses;
 
   const totalIncome = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
@@ -206,11 +245,19 @@ export default async function FinancePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
-        <p className="text-muted-foreground">
-          Record income and expenses, and view your portfolio&apos;s cash flow.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Finance</h1>
+          <p className="text-muted-foreground">
+            Record income and expenses, and view your portfolio&apos;s cash flow.
+          </p>
+        </div>
+        <PropertyFilter
+          options={filterOptions}
+          selected={propertyFilter}
+          ariaLabel="Filter finance by properties"
+          noneLabel="No properties selected"
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -250,8 +297,9 @@ export default async function FinancePage() {
         <CardContent>
           {paymentRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No income recorded yet. Use &ldquo;Add payment&rdquo; to log rent
-              you&apos;ve received.
+              {isFiltered
+                ? "No payments recorded for the selected properties."
+                : "No income recorded yet. Use “Add payment” to log rent you’ve received."}
             </p>
           ) : (
             <Table>
@@ -339,8 +387,9 @@ export default async function FinancePage() {
         <CardContent>
           {expenseRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No expenses recorded yet. Use &ldquo;Add expense&rdquo; to start
-              tracking property costs.
+              {isFiltered
+                ? "No expenses recorded for the selected properties."
+                : "No expenses recorded yet. Use “Add expense” to start tracking property costs."}
             </p>
           ) : (
             <Table>
@@ -400,14 +449,17 @@ export default async function FinancePage() {
         <CardHeader>
           <CardTitle>Per-property P&amp;L</CardTitle>
           <CardDescription>
-            Income minus expenses for each property. Payments not linked to a
-            lease count as unassigned.
+            {isFiltered
+              ? "Income minus expenses for the selected properties."
+              : "Income minus expenses for each property. Payments not linked to a lease count as unassigned."}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {pnlRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Record income and expenses to see per-property profitability.
+              {isFiltered
+                ? "No income or expenses for the selected properties."
+                : "Record income and expenses to see per-property profitability."}
             </p>
           ) : (
             <Table>

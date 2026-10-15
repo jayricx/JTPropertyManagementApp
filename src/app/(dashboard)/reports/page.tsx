@@ -18,14 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ReportPropertyFilter } from "@/components/reports/report-property-filter";
+import { PropertyFilter } from "@/components/filters/property-filter";
 import { listAccessibleProperties } from "@/lib/access";
-import {
-  getReportData,
-  normalizeMonths,
-  normalizePropertyFilter,
-  REPORT_MONTH_OPTIONS,
-} from "@/lib/reports";
+import { normalizePropertyFilter, sanitizePropertySelection, serializePropertySelection } from "@/lib/property-filter";
+import { getReportData, normalizeMonths, REPORT_MONTH_OPTIONS } from "@/lib/reports";
 import { cn, formatCurrency } from "@/lib/utils";
 
 interface ReportsPageProps {
@@ -35,14 +31,15 @@ interface ReportsPageProps {
 function CsvButton({
   report,
   months,
-  properties,
+  propertiesParam,
 }: {
   report: string;
   months: number;
-  properties: string[] | null;
+  /** Serialized `?properties=` value, or null when unfiltered. */
+  propertiesParam: string | null;
 }) {
   const params = new URLSearchParams({ report, months: String(months) });
-  if (properties?.length) params.set("properties", properties.join(","));
+  if (propertiesParam) params.set("properties", propertiesParam);
   return (
     <Button
       variant="outline"
@@ -68,13 +65,15 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   // Options come first so the requested ids can be sanitized before the
   // report runs — labels, CSV links, and data then agree on one filter.
   const options = await listAccessibleProperties(userId);
-  const optionIds = new Set(options.map((o) => o.id));
-  const usable = requestedIds?.filter((id) => optionIds.has(id)) ?? null;
-  // All-or-none is equivalent to no filter — keep the URL canonical.
-  const propertyFilter =
-    usable && usable.length > 0 && usable.length < options.length
-      ? usable
-      : null;
+  // null = no filter; an array (possibly empty) is an explicit selection.
+  const propertyFilter = sanitizePropertySelection(
+    requestedIds,
+    options.map((o) => o.id),
+  );
+  const propertiesParam =
+    propertyFilter === null
+      ? null
+      : serializePropertySelection(propertyFilter, options.length);
 
   const data = await getReportData(userId, months, propertyFilter);
   const { cashFlow, pnl, occupancy, totals } = data;
@@ -83,7 +82,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const reportHref = (m: number) => {
     const params = new URLSearchParams();
     params.set("months", String(m));
-    if (propertyFilter?.length) params.set("properties", propertyFilter.join(","));
+    if (propertiesParam) params.set("properties", propertiesParam);
     return `/reports?${params.toString()}`;
   };
 
@@ -104,10 +103,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <ReportPropertyFilter
+          <PropertyFilter
             options={options}
             selected={propertyFilter}
-            months={months}
+            keepParams={{ months: String(months) }}
+            ariaLabel="Filter report by properties"
+            noneLabel="No properties selected"
           />
           <div
             role="group"
@@ -156,7 +157,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           <CsvButton
             report="cashflow"
             months={months}
-            properties={propertyFilter}
+            propertiesParam={propertiesParam}
           />
         </CardHeader>
         <CardContent className="space-y-6">
@@ -281,7 +282,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               Income and expenses per property over the last {months} months.
             </CardDescription>
           </div>
-          <CsvButton report="pnl" months={months} properties={propertyFilter} />
+          <CsvButton report="pnl" months={months} propertiesParam={propertiesParam} />
         </CardHeader>
         <CardContent>
           {pnl.length === 0 ? (
@@ -358,7 +359,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           <CsvButton
             report="occupancy"
             months={months}
-            properties={propertyFilter}
+            propertiesParam={propertiesParam}
           />
         </CardHeader>
         <CardContent>

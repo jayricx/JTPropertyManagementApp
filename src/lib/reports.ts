@@ -36,28 +36,8 @@ export function normalizeMonths(raw: string | null | undefined): number {
   return Math.min(MAX_REPORT_MONTHS, Math.trunc(n));
 }
 
-const MAX_REPORT_PROPERTIES = 200;
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Parse a `?properties=` value (comma-separated ids) into a filter list.
- * Returns null when nothing usable is present — meaning "no filter".
- */
-export function normalizePropertyFilter(
-  raw: string | null | undefined,
-): string[] | null {
-  if (!raw) return null;
-  const ids = [
-    ...new Set(
-      raw
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => UUID_RE.test(s)),
-    ),
-  ];
-  return ids.length ? ids.slice(0, MAX_REPORT_PROPERTIES) : null;
-}
+// `?properties=` parsing lives in @/lib/property-filter — shared with the
+// Finance page's filter, including the "deselect all" sentinel.
 
 export interface MonthBucket {
   key: string; // "2026-01"
@@ -157,6 +137,34 @@ function finalizePnl(pnlMap: Map<string, PnlRow>): PnlRow[] {
   });
 }
 
+/** Zeroed report — an explicit empty selection ("deselect all"). */
+function emptyReport(buckets: MonthBucket[]): ReportData {
+  const cashFlow: CashFlowRow[] = buckets.map((b) => ({
+    key: b.key,
+    label: b.label,
+    shortLabel: b.shortLabel,
+    income: 0,
+    expenses: 0,
+    net: 0,
+  }));
+  const occupancy: OccupancyRow[] = buckets.map((b) => ({
+    key: b.key,
+    label: b.label,
+    shortLabel: b.shortLabel,
+    occupied: 0,
+    total: 0,
+    rate: 0,
+  }));
+  return {
+    months: buckets.length,
+    buckets,
+    cashFlow,
+    pnl: [],
+    occupancy,
+    totals: { income: 0, expenses: 0, net: 0, avgOccupancy: 0 },
+  };
+}
+
 /**
  * Build every report for the accessible portfolio over the last `months`
  * calendar months. One function feeds both the page and the CSV route so
@@ -164,8 +172,10 @@ function finalizePnl(pnlMap: Map<string, PnlRow>): PnlRow[] {
  *
  * `propertyFilter` narrows every figure to the given properties (records
  * with no property — "unassigned" — drop out while a filter is active).
- * It is intersected with the user's accessible properties here, so a
- * crafted id list can never widen access.
+ * `null` means no filter; an array is an explicit selection, so `[]`
+ * ("deselect all") yields a zeroed report. Ids are intersected with the
+ * user's accessible properties here, so a crafted id list can never widen
+ * access.
  */
 export async function getReportData(
   userId: string,
@@ -178,10 +188,16 @@ export async function getReportData(
   const now = new Date();
   const accessibleIds = await accessiblePropertyIds(userId);
   const accessibleSet = new Set(accessibleIds);
-  const requested = propertyFilter?.filter((id) => accessibleSet.has(id));
-  const filtered = !!requested?.length;
-  // With no filter (or nothing usable requested), keep the full scope.
-  const scopeIds = requested?.length ? requested : accessibleIds;
+  // `null` = no filter; any array (including `[]`) is an explicit selection.
+  const filtered = propertyFilter !== null;
+  const scopeIds =
+    propertyFilter === null
+      ? accessibleIds
+      : propertyFilter.filter((id) => accessibleSet.has(id));
+
+  // Nothing selected (or an empty portfolio) — a real, zeroed report. Bail
+  // out before any query so drizzle never sees an empty `inArray`.
+  if (scopeIds.length === 0) return emptyReport(buckets);
 
   const [propertyRows, paymentRows, expenseRows, leaseRows, unitRows] =
     await Promise.all([

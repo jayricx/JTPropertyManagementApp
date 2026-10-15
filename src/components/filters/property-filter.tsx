@@ -13,31 +13,40 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { propertyFilterLabel, serializePropertySelection } from "@/lib/property-filter";
 
 interface PropertyOption {
   id: string;
   name: string;
 }
 
-interface ReportPropertyFilterProps {
+interface PropertyFilterProps {
   /** Every property the user can access (the full selectable set). */
   options: PropertyOption[];
-  /** Selected property ids, or null when the report is unfiltered. */
+  /** `null` = no filter (all properties); `[]` = nothing selected. */
   selected: string[] | null;
-  months: number;
+  /** Extra query params preserved across filter changes (e.g. `months`). */
+  keepParams?: Record<string, string>;
+  /** Accessible name for the trigger button. */
+  ariaLabel?: string;
+  /** Trigger text when nothing is selected. */
+  noneLabel?: string;
 }
 
 /**
- * Multi-select property filter for the reports header. Selections are kept
- * in the URL (`?properties=id1,id2`) alongside `?months=` so the filter
- * survives period switches, CSV downloads, and sharing. Selecting every
- * property (or none) is equivalent to no filter, so the URL stays canonical.
+ * Multi-select property filter shared by Reports and Finance. Selections
+ * live in the URL (`?properties=`) so they survive reloads, other filters,
+ * CSV downloads, and sharing. "Select all" drops the param entirely (that is
+ * the canonical unfiltered URL); "Deselect all" writes the `none` sentinel
+ * so the empty selection is a real, shareable state.
  */
-export function ReportPropertyFilter({
+export function PropertyFilter({
   options,
   selected,
-  months,
-}: ReportPropertyFilterProps) {
+  keepParams,
+  ariaLabel = "Filter by properties",
+  noneLabel = "None selected",
+}: PropertyFilterProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -48,11 +57,9 @@ export function ReportPropertyFilter({
 
   function apply(ids: string[]) {
     const unique = ids.filter((id) => options.some((o) => o.id === id));
-    const params = new URLSearchParams();
-    params.set("months", String(months));
-    if (unique.length > 0 && unique.length < options.length) {
-      params.set("properties", unique.join(","));
-    }
+    const params = new URLSearchParams(keepParams);
+    const value = serializePropertySelection(unique, options.length);
+    if (value) params.set("properties", value);
     // The menu covers the top of the page — don't jump back up on push.
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
@@ -64,32 +71,20 @@ export function ReportPropertyFilter({
     apply([...next]);
   }
 
-  const label =
-    selected === null
-      ? "All properties"
-      : selected.length === 1
-        ? (options.find((o) => o.id === selected[0])?.name ?? "1 property")
-        : `${selected.length} properties`;
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Filter report by properties"
-          />
+          <Button variant="outline" size="sm" aria-label={ariaLabel} />
         }
       >
         <Building2Icon />
-        <span className="max-w-44 truncate">{label}</span>
+        <span className="max-w-44 truncate">
+          {propertyFilterLabel(selected, options, noneLabel)}
+        </span>
         <ChevronDownIcon />
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="w-auto min-w-56 max-w-80"
-      >
+      <DropdownMenuContent align="start" className="w-auto min-w-56 max-w-80">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Properties</DropdownMenuLabel>
         </DropdownMenuGroup>
@@ -105,8 +100,14 @@ export function ReportPropertyFilter({
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => apply([])}>
-          All properties
+        {/* Base UI fires `onClick` on menu items — Radix's `onSelect` is a
+            valid-but-ignored `div` attribute, which silently broke the
+            previous "All properties" reset action. */}
+        <DropdownMenuItem onClick={() => apply(options.map((o) => o.id))}>
+          Select all
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => apply([])}>
+          Deselect all
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
