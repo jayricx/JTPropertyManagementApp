@@ -285,8 +285,15 @@ export default async function FinancePage() {
                       )}
                     </TableCell>
                     <TableCell>{paymentTypeLabels[p.type]}</TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {paymentMethodLabels[p.method]}
+                      {/* GCash portal payments carry their reference number —
+                          the landlord matches it against their GCash history. */}
+                      {p.notes && (
+                        <div className="text-xs text-muted-foreground">
+                          {p.notes}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(p.amount)}

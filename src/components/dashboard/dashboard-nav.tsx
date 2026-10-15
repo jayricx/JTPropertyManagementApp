@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Settings,
   Users,
   Wallet,
   Wrench,
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/maintenance", label: "Maintenance", icon: Wrench },
   { href: "/reports", label: "Reports", icon: ChartColumnBig },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 function NavLinks({

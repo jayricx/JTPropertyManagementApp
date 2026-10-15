@@ -1,5 +1,6 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
-import { CreditCardIcon } from "lucide-react";
+import { SmartphoneIcon } from "lucide-react";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import {
@@ -10,7 +11,6 @@ import {
   tenants,
   units,
 } from "@/db/schema";
-import { startRentPaymentAction } from "@/app/(tenant)/portal/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +29,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TenantRequestForm } from "@/components/portal/tenant-request-form";
-import { stripeEnabled } from "@/lib/rent-payment";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   leaseStatusLabels,
@@ -160,18 +159,11 @@ export default async function TenantPortalPage({
 
   return (
     <div className="space-y-6">
-      {/* Payment result banners — from Stripe's return URL or the local
-          checkout's redirect. */}
+      {/* Payment result banners — from the GCash reference submission. */}
       {payment === "success" && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400">
-          {stripeEnabled()
-            ? "Payment successful — your receipt will appear in your payment history below in a few seconds."
-            : "Payment recorded — thank you! It is now in your payment history below."}
-        </div>
-      )}
-      {payment === "cancelled" && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
-          Payment cancelled — no charge was made.
+          Payment recorded — thank you! It is now in your payment history
+          below.
         </div>
       )}
       {payment === "error" && (
@@ -322,17 +314,13 @@ export default async function TenantPortalPage({
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           {active ? (
             <>
-              <form action={startRentPaymentAction}>
-                <input type="hidden" name="leaseId" value={active.id} />
-                <Button type="submit">
-                  <CreditCardIcon />
-                  Pay {formatCurrency(active.rentAmount)}
-                </Button>
-              </form>
+              <Button render={<Link href={`/portal/pay-rent/${active.id}`} />}>
+                <SmartphoneIcon />
+                Pay {formatCurrency(active.rentAmount)} with GCash
+              </Button>
               <p>
-                {stripeEnabled()
-                  ? "You will be redirected to Stripe to pay securely by card."
-                  : "Card payments run in demo mode until Stripe keys are configured — confirming records the payment right away."}
+                Send rent from your GCash app to your landlord&apos;s wallet,
+                then submit the reference number to record your payment.
               </p>
               {lastPayment && (
                 <p>

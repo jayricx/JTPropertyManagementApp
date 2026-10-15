@@ -3,15 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, maintenanceRequests, payments, properties, tenants, units } from "@/db/schema";
-import {
-  DEMO_PAYMENT_NOTE,
-  recordRentPayment,
-  stripeEnabled,
-  todayPaymentDate,
-} from "@/lib/rent-payment";
+import { gcashPaymentNote, recordRentPayment } from "@/lib/rent-payment";
 import { isUuid } from "@/lib/utils";
 import { tenantRequestSchema } from "@/lib/validations";
 
@@ -122,87 +118,53 @@ async function loadPayableLease(userId: string, leaseId: string) {
 }
 
 /**
- * "Pay rent" — form action from the portal. With Stripe keys configured it
- * creates a Checkout Session and redirects to Stripe (the webhook records the
- * payment); without keys it redirects to the local confirm page so the flow
- * works end-to-end in development.
+ * "Pay rent" via GCash — the tenant sends rent from their own GCash app to
+ * the landlord's wallet, then submits the reference number from the
+ * confirmation screen here. The payment is recorded with the reference in
+ * its notes; the landlord verifies it against their GCash history. Repeated
+ * submissions of the same reference can't create a second payment.
  */
-export async function startRentPaymentAction(formData: FormData): Promise<void> {
-  const leaseId = String(formData.get("leaseId") ?? "");
+export async function confirmGcashPaymentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const session = await auth();
   if (!session?.user || session.user.role !== "tenant") redirect("/login");
 
-  const found = await loadPayableLease(session.user.id, leaseId);
-  if (!found) redirect("/portal?payment=error");
-  const { tenant, lease } = found;
-
-  if (stripeEnabled()) {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-    const cents = Math.round(Number(lease.rentAmount) * 100);
-    if (cents <= 0) redirect("/portal?payment=error");
-
-    const appUrl = process.env.AUTH_URL ?? "http://localhost:3000";
-    const checkout = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer_email: tenant.email ?? undefined,
-      line_items: [
-        {
-          price_data: {
-            currency: "php",
-            unit_amount: cents,
-            product_data: {
-              name: `Rent — ${lease.propertyName} · Unit ${lease.unitName}`,
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      metadata: { leaseId, tenantId: tenant.id, userId: session.user.id },
-      client_reference_id: leaseId,
-      success_url: `${appUrl}/portal?payment=success`,
-      cancel_url: `${appUrl}/portal?payment=cancelled`,
-    });
-    if (!checkout.url) redirect("/portal?payment=error");
-    redirect(checkout.url);
+  const leaseId = String(formData.get("leaseId") ?? "");
+  const parsed = z
+    .object({
+      reference: z
+        .string()
+        .trim()
+        .regex(
+          /^[A-Za-z0-9-]{6,32}$/,
+          "Enter the GCash reference number (6–32 letters, digits, or dashes).",
+        ),
+    })
+    .safeParse({ reference: formData.get("reference") ?? "" });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid reference." };
   }
 
-  redirect(`/portal/pay-rent/${leaseId}`);
-}
-
-/**
- * Confirm a payment on the local (no-Stripe) checkout page. Records one rent
- * payment per lease per day — a double-clicked submit can't duplicate it.
- */
-export async function confirmDevPaymentAction(formData: FormData): Promise<void> {
-  const leaseId = String(formData.get("leaseId") ?? "");
-  const session = await auth();
-  if (!session?.user || session.user.role !== "tenant") redirect("/login");
-  // Live mode never renders the local checkout page.
-  if (stripeEnabled()) redirect("/portal");
-
   const found = await loadPayableLease(session.user.id, leaseId);
-  if (!found) redirect("/portal?payment=error");
+  if (!found) return { error: "Lease not found." };
 
+  const notes = gcashPaymentNote(parsed.data.reference);
   const [existing] = await db
     .select({ id: payments.id })
     .from(payments)
-    .where(
-      and(
-        eq(payments.leaseId, leaseId),
-        eq(payments.notes, DEMO_PAYMENT_NOTE),
-        eq(payments.paidDate, todayPaymentDate()),
-      ),
-    )
+    .where(and(eq(payments.leaseId, leaseId), eq(payments.notes, notes)))
     .limit(1);
   if (!existing) {
     const ok = await recordRentPayment({
       leaseId,
       userId: session.user.id,
       amount: Number(found.lease.rentAmount),
-      notes: DEMO_PAYMENT_NOTE,
+      method: "gcash",
+      notes,
     });
-    if (!ok) redirect("/portal?payment=error");
+    if (!ok) return { error: "Payment could not be recorded." };
   }
 
   revalidatePath("/portal");

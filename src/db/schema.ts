@@ -29,6 +29,10 @@ export const users = pgTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }),
   // Landlords run the dashboard; tenant accounts only ever see the portal.
   role: userRoleEnum("role").default("landlord").notNull(),
+  // Landlord payout details for the tenant portal's GCash pay-rent flow.
+  // Tenants send rent to this wallet and submit the reference number.
+  gcashNumber: varchar("gcash_number", { length: 20 }),
+  gcashName: varchar("gcash_name", { length: 255 }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -252,6 +256,7 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "check",
   "bank_transfer",
   "card",
+  "gcash",
   "other",
 ]);
 

@@ -205,6 +205,7 @@ export const paymentMethods = [
   "check",
   "bank_transfer",
   "card",
+  "gcash",
   "other",
 ] as const;
 export type PaymentMethod = (typeof paymentMethods)[number];
@@ -214,6 +215,7 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
   check: "Check",
   bank_transfer: "Bank transfer",
   card: "Card",
+  gcash: "GCash",
   other: "Other",
 };
 

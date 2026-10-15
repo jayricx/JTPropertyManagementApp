@@ -2,25 +2,18 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { leases, payments, properties, tenants, units } from "@/db/schema";
 import { sendPaymentReceipt } from "@/lib/email";
+import type { PaymentMethod } from "@/lib/validations";
 import { formatCurrency } from "@/lib/utils";
 
 /**
- * Online rent payments — Stripe Checkout in production, a local confirm page
- * in development. `STRIPE_SECRET_KEY` is the switch: without it, "Pay rent"
- * records the payment directly so the whole flow stays testable before the
- * account exists (same pattern as the email/console fallbacks).
+ * Online rent payments run through GCash — the tenant sends rent from their
+ * GCash app to the landlord's wallet and submits the reference number; the
+ * landlord verifies it in their GCash history. The note doubles as the
+ * idempotency key so a re-submitted reference can't create a second payment.
  */
-export function stripeEnabled(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY);
+export function gcashPaymentNote(reference: string): string {
+  return `GCash payment — Ref #${reference}`;
 }
-
-/** Notes written for Stripe-recorded payments — doubles as the idempotency key. */
-export function stripePaymentNote(sessionId: string): string {
-  return `Online payment — Stripe ${sessionId}`;
-}
-
-/** Notes for payments completed through the local demo checkout. */
-export const DEMO_PAYMENT_NOTE = "Online payment (demo mode)";
 
 /**
  * Today's calendar date in Philippine time (the app's locale), as UTC
@@ -43,7 +36,8 @@ export interface RentPaymentInput {
   userId: string;
   /** Amount in pesos. */
   amount: number;
-  /** Free-text note; for Stripe payments use `stripePaymentNote(session.id)`. */
+  method: PaymentMethod;
+  /** Free-text note; for GCash payments use `gcashPaymentNote(reference)`. */
   notes: string;
 }
 
@@ -77,7 +71,7 @@ export async function recordRentPayment(input: RentPaymentInput): Promise<boolea
     leaseId: input.leaseId,
     amount: input.amount.toFixed(2),
     paidDate: todayPaymentDate(),
-    method: "card",
+    method: input.method,
     type: "rent",
     notes: input.notes,
   });

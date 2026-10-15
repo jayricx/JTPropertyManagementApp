@@ -43,12 +43,25 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  render,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  // `render={<Link href/>}` swaps the native <button> for an <a>, which Base
+  // UI must be told via nativeButton={false} (it warns loudly otherwise).
+  // Explicit caller values still win — this only fills in the default.
+  const rendersAnchor =
+    render !== undefined &&
+    typeof render === "object" &&
+    render !== null &&
+    "props" in render &&
+    (render.props as { href?: unknown }).href !== undefined;
+
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      render={render}
+      nativeButton={rendersAnchor ? false : undefined}
       {...props}
     />
   )
