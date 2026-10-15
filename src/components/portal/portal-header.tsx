@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { LogOutIcon } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function PortalHeader() {
   return (
@@ -19,14 +20,17 @@ export function PortalHeader() {
             Tenant portal
           </span>
         </Link>
-        <button
-          type="button"
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <LogOutIcon className="h-4 w-4" />
-          Sign out
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <LogOutIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Sign out</span>
+          </button>
+        </div>
       </div>
     </header>
   );

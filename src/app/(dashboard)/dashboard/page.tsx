@@ -129,24 +129,28 @@ export default async function DashboardPage() {
           label="Properties"
           value={String(stats?.totalProperties ?? 0)}
           sub={`${stats?.totalUnits ?? 0} total units`}
+          tone="primary"
         />
         <StatCard
           icon={KeyRound}
           label="Occupancy"
           value={`${occupancy}%`}
           sub={`${stats?.occupiedUnits ?? 0} of ${stats?.totalUnits ?? 0} units rented`}
+          tone="teal"
         />
         <StatCard
           icon={Wallet}
           label="Income this month"
           value={formatCurrency(stats?.incomeThisMonth ?? 0)}
           sub="Rent collected so far"
+          tone="gold"
         />
         <StatCard
           icon={Wrench}
           label="Open requests"
           value={String(stats?.openRequests ?? 0)}
           sub="New + in progress"
+          tone="rose"
         />
       </div>
 

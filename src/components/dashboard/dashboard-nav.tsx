@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -52,8 +53,8 @@ function NavLinks({
           className={cn(
             "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
             isItemActive(item.href)
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_3px_0_0_0_var(--sidebar-primary)]"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
         >
           <item.icon className="h-4 w-4" />
@@ -72,7 +73,7 @@ function NavSignOut({ onNavigate }: { onNavigate?: () => void }) {
         onNavigate?.();
         signOut({ callbackUrl: "/login" });
       }}
-      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
     >
       <LogOut className="h-4 w-4" />
       Sign out
@@ -80,11 +81,32 @@ function NavSignOut({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function NavBrand({ compact = false }: { compact?: boolean }) {
+/** Sidebar footer — theme switch next to sign out, both on the green surface. */
+function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <div className="flex items-center gap-1 border-t border-sidebar-border p-3">
+      <ThemeToggle className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
+      <NavSignOut onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+/** `tone="surface"` is for light surfaces (mobile header); the default
+    assumes the deep-green sidebar it usually sits in. */
+function NavBrand({
+  compact = false,
+  tone = "sidebar",
+}: {
+  compact?: boolean;
+  tone?: "sidebar" | "surface";
+}) {
   return (
     <Link
       href="/dashboard"
-      className="flex min-w-0 items-center gap-2 font-semibold"
+      className={cn(
+        "flex min-w-0 items-center gap-2 font-semibold",
+        tone === "sidebar" ? "text-sidebar-foreground" : "text-foreground",
+      )}
     >
       <Image
         src="/icon.svg"
@@ -113,16 +135,14 @@ export function DashboardNav() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 flex-col border-r bg-muted/40 md:flex">
-        <div className="flex h-16 items-center border-b px-6">
+      <aside className="hidden w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+        <div className="flex h-16 items-center border-b border-sidebar-border px-6">
           <NavBrand />
         </div>
         <nav className="flex-1 space-y-1 p-4">
           <NavLinks pathname={pathname} />
         </nav>
-        <div className="border-t p-4">
-          <NavSignOut />
-        </div>
+        <SidebarFooter />
       </aside>
 
       {/* Mobile header — the sidebar is hidden below md, so this is the only
@@ -137,7 +157,8 @@ export function DashboardNav() {
         >
           <Menu />
         </Button>
-        <NavBrand compact />
+        <NavBrand compact tone="surface" />
+        <ThemeToggle className="ml-auto" />
       </header>
 
       {/* Mobile drawer */}
@@ -153,15 +174,16 @@ export function DashboardNav() {
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
-            className="absolute inset-y-0 left-0 flex w-64 flex-col border-r bg-background shadow-xl"
+            className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl"
           >
-            <div className="flex h-16 items-center justify-between border-b px-4 pr-2">
+            <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 pr-2">
               <NavBrand />
               <Button
                 variant="ghost"
                 size="icon"
                 aria-label="Close navigation menu"
                 onClick={() => setMobileOpen(false)}
+                className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               >
                 <X />
               </Button>
@@ -172,9 +194,7 @@ export function DashboardNav() {
                 onNavigate={() => setMobileOpen(false)}
               />
             </nav>
-            <div className="border-t p-4">
-              <NavSignOut onNavigate={() => setMobileOpen(false)} />
-            </div>
+            <SidebarFooter onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
       )}

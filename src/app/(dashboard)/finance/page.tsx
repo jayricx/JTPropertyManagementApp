@@ -219,18 +219,21 @@ export default async function FinancePage() {
           label="Total income"
           value={formatCurrency(totalIncome)}
           sub={`${paymentRows.length} payment${paymentRows.length === 1 ? "" : "s"} recorded`}
+          tone="gold"
         />
         <StatCard
           icon={Receipt}
           label="Total expenses"
           value={formatCurrency(totalExpenses)}
           sub={`${expenseRows.length} expense${expenseRows.length === 1 ? "" : "s"} recorded`}
+          tone="rose"
         />
         <StatCard
           icon={Coins}
           label="Net balance"
           value={formatCurrency(net)}
           sub="Income minus expenses"
+          tone="teal"
         />
       </div>
 
