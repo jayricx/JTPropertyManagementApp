@@ -9,6 +9,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, maintenanceRequests, tenants, users } from "@/db/schema";
 import { tenantSchema } from "@/lib/validations";
+import { awardXp } from "@/lib/gamification";
 import { syncUnitStatus } from "../leases/actions";
 
 export type ActionState = { error: string } | null;
@@ -42,6 +43,7 @@ export async function createTenantAction(
     .insert(tenants)
     .values({ ...parsed.data, userId: session.user.id });
 
+  await awardXp(session.user.id, "tenant_created");
   revalidateTenantPaths();
   redirect("/tenants");
 }
@@ -173,6 +175,7 @@ export async function grantPortalAccessAction(
     .set({ accountId: account.id })
     .where(eq(tenants.id, tenantId));
 
+  await awardXp(session.user.id, "portal_granted");
   revalidateTenantPaths();
   revalidatePath(`/tenants/${tenantId}/edit`);
   return null;

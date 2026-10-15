@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, tenants, units } from "@/db/schema";
 import { canManageUnit } from "@/lib/access";
+import { awardXp } from "@/lib/gamification";
 import { leaseSchema, type LeaseFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
@@ -125,6 +126,7 @@ export async function createLeaseAction(
   await db.insert(leases).values(leaseDbValues(parsed.data));
   await syncUnitStatus(parsed.data.unitId);
 
+  await awardXp(session.user.id, "lease_created");
   revalidateLeasePaths();
   redirect("/leases");
 }

@@ -398,3 +398,42 @@ export const notifications = pgTable(
   },
   (t) => [index("notifications_user_id_idx").on(t.userId)],
 );
+
+// ---------------------------------------------------------------------------
+// Gamification — XP ledger (append-only) and one-time achievement unlocks.
+// XP is awarded by server actions for landlord-positive behavior; badges are
+// derived from portfolio data on the fly and recorded here the first time
+// they're earned so the celebration only fires once.
+// ---------------------------------------------------------------------------
+
+export const xpEvents = pgTable(
+  "xp_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Award kind, e.g. "property_created" — see XP_REWARDS. */
+    type: varchar("type", { length: 64 }).notNull(),
+    amount: integer("amount").notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("xp_events_user_id_idx").on(t.userId)],
+);
+
+export const achievements = pgTable(
+  "achievements",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Badge key — see BADGES in src/lib/gamification.ts. */
+    key: varchar("key", { length: 64 }).notNull(),
+    unlockedAt: timestamp("unlocked_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("achievements_user_key").on(t.userId, t.key),
+    index("achievements_user_id_idx").on(t.userId),
+  ],
+);

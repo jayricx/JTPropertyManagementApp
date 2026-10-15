@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { properties, propertyCollaborators, units, users } from "@/db/schema";
 import { canManageProperty, isPropertyOwner } from "@/lib/access";
+import { awardXp } from "@/lib/gamification";
 import { propertySchema, unitSchema, type UnitFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
@@ -40,6 +41,7 @@ export async function createPropertyAction(
     .values({ ...parsed.data, userId: session.user.id })
     .returning({ id: properties.id });
 
+  await awardXp(session.user.id, "property_created");
   revalidatePath("/properties");
   redirect(`/properties/${created.id}`);
 }
@@ -225,6 +227,7 @@ export async function createUnitAction(
 
   await db.insert(units).values({ ...unitDbValues(parsed.data), propertyId });
 
+  await awardXp(session.user.id, "unit_created");
   revalidatePath(`/properties/${propertyId}`);
   redirect(`/properties/${propertyId}`);
 }

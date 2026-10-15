@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { maintenanceRequests, tenants, units } from "@/db/schema";
 import { canManageProperty } from "@/lib/access";
+import { awardXp } from "@/lib/gamification";
 import { maintenanceSchema, type MaintenanceFormParsed } from "@/lib/validations";
 
 /** `ok` lets dialog forms close themselves after a successful mutation. */
@@ -90,6 +91,7 @@ export async function createMaintenanceAction(
     resolvedAt: parsed.data.status === "resolved" ? new Date() : null,
   });
 
+  await awardXp(session.user.id, "maintenance_created");
   revalidatePath("/maintenance");
   revalidatePath("/dashboard"); // open-requests KPI
   return { ok: true };
@@ -164,6 +166,11 @@ export async function updateMaintenanceAction(
       updatedAt: new Date(),
     })
     .where(eq(maintenanceRequests.id, requestId));
+
+  // Reward actually fixing things — only on the new→resolved transition.
+  if (isResolved && !wasResolved) {
+    await awardXp(session.user.id, "maintenance_resolved");
+  }
 
   revalidatePath("/maintenance");
   revalidatePath("/dashboard");

@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { expenses, payments, units } from "@/db/schema";
 import { canManageLease, canManageProperty } from "@/lib/access";
+import { awardXp } from "@/lib/gamification";
 import { monthRangeDates } from "@/lib/utils";
 import {
   expenseSchema,
@@ -112,6 +113,7 @@ export async function createPaymentAction(
       })),
     );
 
+    await awardXp(session.user.id, "payment_recorded");
     revalidateFinancePaths();
     return { ok: true };
   }
@@ -128,6 +130,7 @@ export async function createPaymentAction(
     userId: session.user.id,
   });
 
+  await awardXp(session.user.id, "payment_recorded");
   revalidateFinancePaths();
   return { ok: true };
 }
@@ -271,6 +274,7 @@ export async function createExpenseAction(
     .insert(expenses)
     .values({ ...expenseDbValues(parsed.data), userId: session.user.id });
 
+  await awardXp(session.user.id, "expense_recorded");
   revalidateFinancePaths();
   return { ok: true };
 }

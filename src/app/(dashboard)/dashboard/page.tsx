@@ -10,7 +10,9 @@ import {
   units,
 } from "@/db/schema";
 import { accessiblePropertyIds } from "@/lib/access";
+import { getGamificationOverview } from "@/lib/gamification";
 import { formatCurrency } from "@/lib/utils";
+import { GamificationPanel } from "@/components/gamification/gamification-panel";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,7 +100,12 @@ async function getStats(userId: string): Promise<DashboardStats> {
 
 export default async function DashboardPage() {
   const session = await auth();
-  const stats = session?.user ? await getStats(session.user.id) : null;
+  const [stats, gamification] = session?.user
+    ? await Promise.all([
+        getStats(session.user.id),
+        getGamificationOverview(session.user.id),
+      ])
+    : [null, null];
 
   const occupancy =
     stats && stats.totalUnits > 0
@@ -142,6 +149,10 @@ export default async function DashboardPage() {
           sub="New + in progress"
         />
       </div>
+
+      {gamification && stats && stats.totalProperties > 0 && (
+        <GamificationPanel overview={gamification} />
+      )}
 
       {stats && stats.totalProperties === 0 && (
         <Card>
