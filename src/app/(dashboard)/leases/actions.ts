@@ -8,9 +8,76 @@ import { db } from "@/db/client";
 import { leases, tenants, units } from "@/db/schema";
 import { canManageUnit } from "@/lib/access";
 import { awardXp } from "@/lib/gamification";
-import { leaseSchema, type LeaseFormParsed } from "@/lib/validations";
+import { saveLeaseSignature } from "@/lib/signatures";
+import { isUuid } from "@/lib/utils";
+import {
+  leaseSchema,
+  leaseSignatureSchema,
+  type LeaseFormParsed,
+} from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
+
+/** Shape for the signature form (landlord + tenant sides share it). */
+export type SignatureFormState = { error?: string; ok?: boolean } | null;
+
+/**
+ * Sign a lease as the landlord. Typed signatures store the name; drawn
+ * ones a PNG data URL. The attestation box is required — that is what
+ * makes this an electronic signature rather than a scribble.
+ */
+export async function signLeaseAction(
+  _prev: SignatureFormState,
+  formData: FormData,
+): Promise<SignatureFormState> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "landlord") {
+    return { error: "Only landlord accounts can sign here." };
+  }
+
+  const leaseId = String(formData.get("leaseId") ?? "");
+  if (!isUuid(leaseId)) return { error: "That lease could not be found." };
+
+  const [lease] = await db
+    .select({ unitId: leases.unitId })
+    .from(leases)
+    .where(eq(leases.id, leaseId))
+    .limit(1);
+  if (!lease || !(await canManageUnit(session.user.id, lease.unitId))) {
+    return { error: "You cannot sign this lease." };
+  }
+
+  const parsed = leaseSignatureSchema.safeParse({
+    signerName: formData.get("signerName"),
+    method: formData.get("method"),
+    drawnSignature: formData.get("drawnSignature") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid signature." };
+  }
+  if (formData.get("attestation") !== "on") {
+    return { error: "Tick the agreement box to sign." };
+  }
+
+  const signature =
+    parsed.data.method === "typed"
+      ? parsed.data.signerName
+      : (parsed.data.drawnSignature ?? "");
+  if (!signature) return { error: "Draw your signature before signing." };
+
+  await saveLeaseSignature({
+    leaseId,
+    role: "landlord",
+    signerName: parsed.data.signerName,
+    method: parsed.data.method,
+    signature,
+  });
+
+  revalidatePath(`/leases/${leaseId}/edit`);
+  revalidatePath(`/leases/${leaseId}/signed`);
+  revalidatePath("/leases");
+  return { ok: true };
+}
 
 function toFormDataRecord(formData: FormData): Record<string, string> {
   const record: Record<string, string> = {};

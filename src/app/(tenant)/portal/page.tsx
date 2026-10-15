@@ -10,6 +10,7 @@ import {
   properties,
   tenants,
   units,
+  users,
 } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TenantRequestForm } from "@/components/portal/tenant-request-form";
+import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
+import { signLeaseAsTenantAction } from "@/app/(tenant)/portal/actions";
+import { getLeaseSignatures } from "@/lib/signatures";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   leaseStatusLabels,
@@ -111,6 +115,7 @@ export default async function TenantPortalPage({
         status: leases.status,
         unitName: units.name,
         propertyName: properties.name,
+        propertyId: properties.id,
       })
       .from(leases)
       .innerJoin(units, eq(leases.unitId, units.id))
@@ -156,6 +161,20 @@ export default async function TenantPortalPage({
   const openRequests = requestRows.filter(
     (r) => r.status === "new" || r.status === "in_progress",
   ).length;
+
+  // Signature state + the counterparty's name for the sign card.
+  const [signatures, landlordName] = active
+    ? await Promise.all([
+        getLeaseSignatures(active.id),
+        db
+          .select({ name: users.name })
+          .from(properties)
+          .innerJoin(users, eq(properties.userId, users.id))
+          .where(eq(properties.id, active.propertyId))
+          .limit(1)
+          .then((rows) => rows[0]?.name ?? "Your landlord"),
+      ])
+    : [null, "Your landlord"];
 
   return (
     <div className="space-y-6">
@@ -298,6 +317,21 @@ export default async function TenantPortalPage({
           )}
         </CardContent>
       </Card>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Lease signatures                                                  */}
+      {/* ---------------------------------------------------------------- */}
+      {active && signatures && (
+        <LeaseSignaturesCard
+          leaseId={active.id}
+          viewer="tenant"
+          signatures={signatures}
+          defaultName={`${tenant.firstName} ${tenant.lastName}`.trim()}
+          landlordName={landlordName}
+          tenantName={`${tenant.firstName} ${tenant.lastName}`.trim()}
+          action={signLeaseAsTenantAction}
+        />
+      )}
 
       {/* ---------------------------------------------------------------- */}
       {/* Pay rent                                                         */}

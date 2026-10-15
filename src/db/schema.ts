@@ -251,6 +251,43 @@ export const leases = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Lease signatures — credential-free e-signing. DocuSign/Hellosign can slot
+// in later (provider id + envelope columns); until then a party signs here
+// with a typed name or a drawn mark, and the pair is the signed lease.
+// One row per party per lease, so re-signing replaces.
+// ---------------------------------------------------------------------------
+
+export const signatureRoleEnum = pgEnum("signature_role", [
+  "landlord",
+  "tenant",
+]);
+
+export const signatureMethodEnum = pgEnum("signature_method", [
+  "typed",
+  "drawn",
+]);
+
+export const leaseSignatures = pgTable(
+  "lease_signatures",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leaseId: uuid("lease_id")
+      .notNull()
+      .references(() => leases.id, { onDelete: "cascade" }),
+    role: signatureRoleEnum("role").notNull(),
+    signerName: varchar("signer_name", { length: 255 }).notNull(),
+    method: signatureMethodEnum("method").notNull(),
+    // Typed: the name as written. Drawn: a PNG data URL of the strokes.
+    signature: text("signature").notNull(),
+    signedAt: timestamp("signed_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("lease_signatures_lease_role_key").on(t.leaseId, t.role),
+    index("lease_signatures_lease_id_idx").on(t.leaseId),
+  ],
+);
+
 export const paymentMethodEnum = pgEnum("payment_method", [
   "cash",
   "check",

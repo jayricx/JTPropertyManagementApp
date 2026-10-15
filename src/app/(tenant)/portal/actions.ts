@@ -8,11 +8,75 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, maintenanceRequests, payments, properties, tenants, units } from "@/db/schema";
 import { gcashPaymentNote, recordRentPayment } from "@/lib/rent-payment";
+import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
-import { tenantRequestSchema } from "@/lib/validations";
+import { leaseSignatureSchema, tenantRequestSchema } from "@/lib/validations";
 
 /** `ok` lets the form reset itself after a successful submission. */
 export type ActionState = { error?: string; ok?: boolean } | null;
+
+/**
+ * Sign the tenant's own lease. Same attestation flow as the landlord
+ * side, but scoped to a lease that belongs to this tenant account.
+ */
+export async function signLeaseAsTenantAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (session.user.role !== "tenant") {
+    return { error: "Only tenant accounts can sign here." };
+  }
+
+  const leaseId = String(formData.get("leaseId") ?? "");
+  if (!isUuid(leaseId)) return { error: "That lease could not be found." };
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.accountId, session.user.id))
+    .limit(1);
+  if (!tenant) return { error: "No tenant profile is linked to this account." };
+
+  const [lease] = await db
+    .select({ id: leases.id })
+    .from(leases)
+    .where(and(eq(leases.id, leaseId), eq(leases.tenantId, tenant.id)))
+    .limit(1);
+  if (!lease) return { error: "That lease does not belong to you." };
+
+  const parsed = leaseSignatureSchema.safeParse({
+    signerName: formData.get("signerName"),
+    method: formData.get("method"),
+    drawnSignature: formData.get("drawnSignature") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid signature." };
+  }
+  if (formData.get("attestation") !== "on") {
+    return { error: "Tick the agreement box to sign." };
+  }
+
+  const signature =
+    parsed.data.method === "typed"
+      ? parsed.data.signerName
+      : (parsed.data.drawnSignature ?? "");
+  if (!signature) return { error: "Draw your signature before signing." };
+
+  await saveLeaseSignature({
+    leaseId,
+    role: "tenant",
+    signerName: parsed.data.signerName,
+    method: parsed.data.method,
+    signature,
+  });
+
+  // The landlord watches the lease page for the tenant's mark.
+  revalidatePath("/portal");
+  revalidatePath("/leases");
+  return { ok: true };
+}
 
 export async function createTenantRequestAction(
   _prev: ActionState,

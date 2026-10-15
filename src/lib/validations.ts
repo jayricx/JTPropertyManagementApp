@@ -200,6 +200,32 @@ const optionalUuid = (message: string) =>
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v));
 
+/** Mirrors `signature_role` in the schema. */
+export const signatureRoles = ["landlord", "tenant"] as const;
+export type SignatureRole = (typeof signatureRoles)[number];
+
+/** Mirrors `signature_method` in the schema. */
+export const signatureMethods = ["typed", "drawn"] as const;
+export type SignatureMethod = (typeof signatureMethods)[number];
+
+/**
+ * Lease signature form. Typed signatures store the name; drawn ones a PNG
+ * data URL, capped so a signature can never bloat a row. The attestation
+ * checkbox is checked in the action (it posts as "on").
+ */
+export const leaseSignatureSchema = z.object({
+  signerName: z
+    .string()
+    .trim()
+    .min(2, "Enter the signer's full name.")
+    .max(255, "That name is too long."),
+  method: z.enum(signatureMethods),
+  drawnSignature: z
+    .string()
+    .max(400_000, "That signature image is too large — draw a smaller one.")
+    .optional(),
+});
+
 export const paymentMethods = [
   "cash",
   "check",

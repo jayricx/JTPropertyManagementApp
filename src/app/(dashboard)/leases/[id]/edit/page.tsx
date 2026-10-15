@@ -3,9 +3,12 @@ import { notFound } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, properties, tenants, units } from "@/db/schema";
+import { leases, properties, tenants, units, users } from "@/db/schema";
 import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form";
+import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
+import { signLeaseAction } from "@/app/(dashboard)/leases/actions";
 import { accessiblePropertyIds, canManageUnit } from "@/lib/access";
+import { getLeaseSignatures } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
 import type { LeaseFormValues } from "@/lib/validations";
 
@@ -48,7 +51,8 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
 
   const accessibleIds = await accessiblePropertyIds(userId);
 
-  const [tenantRows, unitRows] = await Promise.all([
+  const [tenantRows, unitRows, signatures, landlordRows, leaseTenantRows] =
+    await Promise.all([
     db
       .select({
         id: tenants.id,
@@ -69,7 +73,22 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
       .innerJoin(properties, eq(units.propertyId, properties.id))
       .where(inArray(properties.id, accessibleIds))
       .orderBy(asc(properties.name), asc(units.name)),
-  ]);
+      getLeaseSignatures(lease.id),
+      db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1),
+      // The lease's tenant may belong to a co-owner rather than this user.
+      db
+        .select({
+          firstName: tenants.firstName,
+          lastName: tenants.lastName,
+        })
+        .from(tenants)
+        .where(eq(tenants.id, lease.tenantId))
+        .limit(1),
+    ]);
 
   const tenantOptions = tenantRows.map((t) => ({
     id: t.id,
@@ -107,6 +126,20 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         lease={formValues}
         unitOptions={unitOptions}
         tenantOptions={tenantOptions}
+      />
+      <LeaseSignaturesCard
+        leaseId={lease.id}
+        viewer="landlord"
+        signatures={signatures}
+        defaultName={landlordRows[0]?.name ?? ""}
+        landlordName={landlordRows[0]?.name ?? "Landlord"}
+        tenantName={
+          leaseTenantRows[0]
+            ? `${leaseTenantRows[0].firstName} ${leaseTenantRows[0].lastName}`
+            : "Tenant"
+        }
+        action={signLeaseAction}
+        signedHref={`/leases/${lease.id}/signed`}
       />
     </div>
   );
