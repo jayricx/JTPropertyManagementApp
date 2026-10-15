@@ -9,7 +9,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 export function PortalHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4">
+      <div
+        className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4 pt-[env(safe-area-inset-top)]"
+        style={{ height: "calc(3.5rem + env(safe-area-inset-top))" }}
+      >
         <Link
           href="/portal"
           className="flex min-w-0 items-center gap-2 font-semibold"

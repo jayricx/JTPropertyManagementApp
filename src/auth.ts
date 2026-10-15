@@ -27,6 +27,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     authenticatorsTable: authenticators,
   }),
   session: { strategy: "jwt" },
+  // The app runs behind Vercel's proxy, so derive the origin from the
+  // forwarded host instead of hardcoding AUTH_URL — without this, Auth.js
+  // throws a configuration error in production builds.
+  trustHost: true,
   pages: { signIn: "/login" },
   providers: [
     Credentials({

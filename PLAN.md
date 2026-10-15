@@ -57,10 +57,10 @@ A web app for landlords to register properties, track income/expenses, manage te
 
 ## Phase 3
 
-- E-sign leases (DocuSign/Dropbox Sign), tenant screening
-- QuickBooks/Xero integration
-- PWA / mobile-first polish
-- AI: auto-categorize expenses, rent pricing suggestions
+- **PWA / mobile-first polish** ✅ — installable to the home screen: `app/manifest.ts` (standalone display, `start_url: /dashboard` so the launcher role-routes like the app does, emerald `theme_color`, Dashboard/Finance/Maintenance app shortcuts, PNG icons at 192/512 plus a full-bleed **maskable** variant rasterized from the SVG logo), a deliberately conservative `public/sw.js` (never touches `/api` or non-GET; navigations are network-first with a branded `public/offline.html` fallback and HTML is never cached; hashed `/_next/static` + icons are cache-first), an install prompt that uses the native `beforeinstallprompt` sheet on Chromium and spells out Share → Add to Home Screen on iOS (dismissal persists in localStorage), and mobile polish: `viewport-fit=cover` with `env(safe-area-inset-*)` padding on both app headers, the drawer and the sidebar footer, `overscroll-contain` on the drawer, and `nosniff`/`DENY`/referrer headers plus `no-store` + CSP on `sw.js`. The SW registers **in production only** so dev HMR stays honest.
+- E-sign leases — next up: a credential-free manual signing flow (typed + drawn signature, both parties, print-ready copy) since DocuSign/Dropbox Sign and tenant screening need credentials we don't have
+- QuickBooks/Xero integration — parked (needs an OAuth app)
+- AI: auto-categorize expenses, rent pricing suggestions — parked (needs an LLM API key; a rule-based "AI" stand-in would be dishonest)
 
 ## 12-Week Milestones
 

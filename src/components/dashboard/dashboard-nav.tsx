@@ -84,7 +84,7 @@ function NavSignOut({ onNavigate }: { onNavigate?: () => void }) {
 /** Sidebar footer — theme switch next to sign out, both on the green surface. */
 function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <div className="flex items-center gap-1 border-t border-sidebar-border p-3">
+    <div className="flex items-center gap-1 border-t border-sidebar-border p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
       <ThemeToggle className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
       <NavSignOut onNavigate={onNavigate} />
     </div>
@@ -147,7 +147,9 @@ export function DashboardNav() {
 
       {/* Mobile header — the sidebar is hidden below md, so this is the only
           way to reach the navigation on small screens. */}
-      <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4 md:hidden">
+      <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4 pt-[env(safe-area-inset-top)] md:hidden"
+        style={{ height: "calc(4rem + env(safe-area-inset-top))" }}
+      >
         <Button
           variant="ghost"
           size="icon"
@@ -176,7 +178,7 @@ export function DashboardNav() {
             aria-label="Navigation menu"
             className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl"
           >
-            <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 pr-2">
+            <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 pr-2 pt-[env(safe-area-inset-top)]">
               <NavBrand />
               <Button
                 variant="ghost"
@@ -188,7 +190,7 @@ export function DashboardNav() {
                 <X />
               </Button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+            <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-4">
               <NavLinks
                 pathname={pathname}
                 onNavigate={() => setMobileOpen(false)}

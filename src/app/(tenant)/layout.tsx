@@ -15,7 +15,7 @@ export default async function TenantLayout({
   return (
     <div className="flex min-h-svh flex-col">
       <PortalHeader />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
         {children}
       </main>
     </div>
