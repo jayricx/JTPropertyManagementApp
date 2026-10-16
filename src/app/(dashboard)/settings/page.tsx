@@ -1,9 +1,11 @@
 import { eq } from "drizzle-orm";
-import { SmartphoneIcon } from "lucide-react";
+import { MailIcon, SmartphoneIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
+import { emailDiagnostics } from "@/lib/email";
+import { EmailTestForm } from "@/components/settings/email-test-form";
 import { GcashSettingsForm } from "@/components/settings/gcash-settings-form";
 import {
   Card,
@@ -31,7 +33,8 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
-          Payment details tenants see when paying rent.
+          Payment details tenants see when paying rent, and your email delivery
+          settings.
         </p>
       </div>
 
@@ -51,6 +54,22 @@ export default async function SettingsPage() {
             gcashNumber={user?.gcashNumber ?? ""}
             gcashName={user?.gcashName ?? ""}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MailIcon className="size-5" /> Email delivery
+          </CardTitle>
+          <CardDescription>
+            Password resets and payment receipts go out through this account.
+            Send yourself a test to confirm the sender, the key and the links
+            inside each email are all right.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <EmailTestForm {...emailDiagnostics()} />
         </CardContent>
       </Card>
     </div>

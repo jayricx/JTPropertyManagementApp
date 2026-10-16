@@ -22,7 +22,27 @@ const usingSharedSender = !from;
 
 let warnedAboutSharedSender = false;
 
-const APP_URL = process.env.AUTH_URL ?? "http://localhost:3000";
+// Same blank-means-unset rule as EMAIL_FROM: a bare AUTH_URL would build links
+// that point nowhere.
+const appUrl = (process.env.AUTH_URL ?? "").trim();
+const APP_URL = appUrl || "http://localhost:3000";
+
+/**
+ * What the server is actually configured to send with. Surfaced on the
+ * settings page so a misconfigured sender, app URL or missing key is visible in
+ * the UI instead of only in server logs.
+ */
+export function emailDiagnostics() {
+  return {
+    sender: FROM,
+    /** True when the shared Resend sender is in use (owner address only). */
+    sharedSender: usingSharedSender,
+    /** False when emails are only logged to the server console. */
+    configured: Boolean(process.env.RESEND_API_KEY),
+    /** The host that links inside emails point back to. */
+    appUrl: APP_URL,
+  };
+}
 
 let resendClient: Resend | null = null;
 
@@ -57,7 +77,7 @@ export function escapeHtml(value: string): string {
 }
 
 /** Wrap body content in the JT-branded email shell. */
-function emailShell(title: string, bodyHtml: string): string {
+export function emailShell(title: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html>
   <body style="margin:0;padding:24px;background-color:#f4f5f7;font-family:Segoe UI,Helvetica,Arial,sans-serif;">
