@@ -27,6 +27,9 @@ export const users = pgTable("users", {
   image: varchar("image", { length: 255 }),
   // App-specific columns (ignored by the Auth.js adapter)
   passwordHash: varchar("password_hash", { length: 255 }),
+  // Stamped whenever the password changes. Sessions carry a copy of this
+  // value, so a reset signs out every device that signed in before it.
+  passwordChangedAt: timestamp("password_changed_at", { mode: "date" }),
   // Landlords run the dashboard; tenant accounts only ever see the portal.
   role: userRoleEnum("role").default("landlord").notNull(),
   // Landlord payout details for the tenant portal's GCash pay-rent flow.
@@ -357,6 +360,30 @@ export const expenses = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [index("expenses_user_id_idx").on(t.userId)],
+);
+
+// ---------------------------------------------------------------------------
+// Password resets. Only the SHA-256 hash of a token is stored, so a leaked
+// database row cannot be turned into a working reset link. Rows are
+// single-use and expire.
+// ---------------------------------------------------------------------------
+
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    usedAt: timestamp("used_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("password_reset_tokens_token_hash_key").on(t.tokenHash),
+    index("password_reset_tokens_user_id_idx").on(t.userId),
+  ],
 );
 
 export const maintenanceStatusEnum = pgEnum("maintenance_status", [

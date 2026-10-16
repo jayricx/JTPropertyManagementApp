@@ -49,7 +49,7 @@ function emailShell(title: string, bodyHtml: string): string {
 <html>
   <body style="margin:0;padding:24px;background-color:#f4f5f7;font-family:Segoe UI,Helvetica,Arial,sans-serif;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-      <div style="background:linear-gradient(135deg,#0f172a,#2563eb);padding:20px 24px;">
+      <div style="background:linear-gradient(135deg,#064e3b,#10b981);padding:20px 24px;">
         <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;">JT Property Management</span>
       </div>
       <div style="padding:24px;color:#111827;font-size:15px;line-height:1.6;">
@@ -202,7 +202,37 @@ export async function sendPaymentReceipt(r: PaymentReceipt): Promise<SendResult>
       "Payment received",
       `<p>Hi ${tenantLabel},</p>
        <p>We received your rent payment of <strong>${amountLabel}</strong> on <strong>${dateText}</strong> for <strong>${unitLabel}</strong>.</p>
-       <p><a href="${portalUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View payment history</a></p>`,
+       <p><a href="${portalUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View payment history</a></p>`,
+    ),
+  });
+}
+
+export interface PasswordResetEmail {
+  to: string;
+  name: string | null;
+  resetUrl: string;
+  expiresInMinutes: number;
+}
+
+/** The reset link. Kept deliberately plain — no tracking pixels, no logo. */
+export async function sendPasswordResetEmail(
+  r: PasswordResetEmail,
+): Promise<SendResult> {
+  const nameLabel = escapeHtml(r.name ?? "");
+  const greeting = r.name ? `Hi ${nameLabel},` : "Hi,";
+  const resetUrl = escapeHtml(r.resetUrl);
+
+  return sendEmail({
+    to: r.to,
+    subject: "Reset your JT Property password",
+    text: `${greeting}\n\nUse the link below to choose a new password. It works once and expires in ${r.expiresInMinutes} minutes.\n\n${r.resetUrl}\n\nIf you didn't ask for this, you can ignore this email — nothing has changed.\n\n— JT Property Management`,
+    html: emailShell(
+      "Reset your password",
+      `<p>${greeting}</p>
+       <p>Use the button below to choose a new password. The link works once and expires in ${r.expiresInMinutes} minutes.</p>
+       <p><a href="${resetUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Choose a new password</a></p>
+       <p style="color:#6b7280;font-size:13px;">If the button doesn't work, paste this link into your browser:<br>${resetUrl}</p>
+       <p style="color:#6b7280;font-size:13px;">If you didn't ask for this, you can ignore this email — nothing has changed.</p>`,
     ),
   });
 }
