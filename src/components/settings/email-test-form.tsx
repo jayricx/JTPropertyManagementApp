@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useSyncExternalStore } from "react";
 import { MailIcon, SendIcon } from "lucide-react";
 import {
   sendTestEmailAction,
@@ -31,6 +31,24 @@ export function EmailTestForm({
     null,
   );
 
+  // The site being viewed, resolved after hydration. Compared against
+  // AUTH_URL below: a mismatch means every link in every email points at a
+  // different host than the one people are actually using.
+  const currentHost = useSyncExternalStore(
+    () => () => {},
+    () => window.location.host,
+    () => null,
+  );
+  const linkHost = (() => {
+    try {
+      return new URL(appUrl).host;
+    } catch {
+      return null;
+    }
+  })();
+  const hostMismatch =
+    currentHost !== null && linkHost !== null && currentHost !== linkHost;
+
   return (
     <div className="space-y-4">
       <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
@@ -40,6 +58,14 @@ export function EmailTestForm({
         <dt className="text-muted-foreground">Links point to</dt>
         <dd className="font-medium break-all">{appUrl}</dd>
       </dl>
+
+      {hostMismatch && (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          Links inside emails point to <strong>{linkHost}</strong>, but this
+          site is <strong>{currentHost}</strong>. Every password-reset link will
+          land on the wrong address — fix <code>AUTH_URL</code> and redeploy.
+        </p>
+      )}
 
       {!configured && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
