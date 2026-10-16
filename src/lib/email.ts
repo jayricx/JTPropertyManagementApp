@@ -6,8 +6,21 @@ import { Resend } from "resend";
  * the whole flow stays testable without credentials.
  */
 
-const FROM =
-  process.env.EMAIL_FROM ?? "JT Property Management <onboarding@resend.dev>";
+/**
+ * Resend's shared testing sender. It works without a domain of your own, but
+ * Resend only delivers it to the address on your Resend account — every other
+ * recipient is refused. Replace EMAIL_FROM with an address on a verified
+ * domain once you have one.
+ */
+const SHARED_SENDER = "JT Property Management <onboarding@resend.dev>";
+
+// Treat a blank or whitespace-only value as unset: an empty variable in
+// .env.local or the Vercel dashboard must not blank out the sender.
+const from = (process.env.EMAIL_FROM ?? "").trim();
+const FROM = from || SHARED_SENDER;
+const usingSharedSender = !from;
+
+let warnedAboutSharedSender = false;
 
 const APP_URL = process.env.AUTH_URL ?? "http://localhost:3000";
 
@@ -73,6 +86,15 @@ export async function sendEmail(payload: EmailPayload): Promise<SendResult> {
       `[email:dev] To: ${payload.to}\n[email:dev] Subject: ${payload.subject}\n[email:dev] Body:\n${payload.text}`,
     );
     return { delivered: false, reason: "RESEND_API_KEY not set — logged instead" };
+  }
+
+  if (usingSharedSender && !warnedAboutSharedSender) {
+    warnedAboutSharedSender = true;
+    console.warn(
+      "[email] EMAIL_FROM is not set — sending from the shared Resend " +
+        "sender, which only delivers to the Resend account's own address. " +
+        "Verify a domain and set EMAIL_FROM to reach anyone else.",
+    );
   }
 
   const { error } = await client.emails.send({
