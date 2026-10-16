@@ -203,7 +203,8 @@ export const tenants = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     // Portal login: links this roster entry to a tenant-role user account.
     // Deleting the account keeps the roster row (set null). One account per
-    // tenant is enforced by the grant action, which creates a fresh user.
+    // tenant is enforced by the invite flow — the completion route creates a
+    // fresh user once the tenant picks a password from the emailed link.
     accountId: uuid("account_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -393,6 +394,26 @@ export const passwordResetTokens = pgTable(
  * so an unverified address can never hold a usable login. One row per address:
  * a new attempt replaces the old one.
  */
+export const tenantInvitations = pgTable(
+  "tenant_invitations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** SHA-256 of the emailed token — the token itself is never stored. */
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    usedAt: timestamp("used_at", { mode: "date" }),
+    lastSentAt: timestamp("last_sent_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("tenant_invitations_token_hash_key").on(t.tokenHash),
+    index("tenant_invitations_tenant_id_idx").on(t.tenantId),
+  ],
+);
+
 export const pendingRegistrations = pgTable(
   "pending_registrations",
   {

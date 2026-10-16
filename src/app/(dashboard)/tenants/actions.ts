@@ -2,17 +2,29 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import bcrypt from "bcryptjs";
-import { and, eq, sql } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, maintenanceRequests, tenants, users } from "@/db/schema";
+import { leases, maintenanceRequests, tenantInvitations, tenants, users } from "@/db/schema";
 import { tenantSchema } from "@/lib/validations";
+import { emailDiagnostics, sendPortalInviteEmail } from "@/lib/email";
+import {
+  createTenantInvitation,
+  INVITE_TTL_HOURS,
+} from "@/lib/tenant-invitations";
 import { awardXp } from "@/lib/gamification";
 import { syncUnitStatus } from "../leases/actions";
 
 export type ActionState = { error: string } | null;
+
+function appUrl(): string {
+  // AUTH_URL is the deployment's canonical origin.
+  return (
+    process.env.AUTH_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}
 
 function toFormDataRecord(formData: FormData): Record<string, string> {
   const record: Record<string, string> = {};
@@ -108,12 +120,13 @@ export async function deleteTenantAction(
 }
 
 // ---------------------------------------------------------------------------
-// Tenant portal access — the landlord grants or revokes a login for a roster
-// entry. The account created here has role "tenant" and can only ever see the
-// portal (the dashboard layout bounces it).
+// Tenant portal access — the landlord emails an invite (or revokes one) for a
+// roster entry; the tenant's account is only created when they complete that
+// link at /api/auth/complete-portal-setup, with role "tenant", so it can never
+// see the dashboard (the layout bounces it).
 // ---------------------------------------------------------------------------
 
-export async function grantPortalAccessAction(
+export async function sendPortalInviteAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
@@ -123,15 +136,6 @@ export async function grantPortalAccessAction(
   const tenantId = formData.get("tenantId");
   if (typeof tenantId !== "string" || !tenantId) {
     return { error: "Missing tenant id." };
-  }
-
-  const password = z
-    .string()
-    .min(8, "Password must be at least 8 characters.")
-    .max(100)
-    .safeParse(formData.get("password"));
-  if (!password.success) {
-    return { error: password.error.issues[0]?.message ?? "Invalid password." };
   }
 
   // Roster entries are per-landlord — only the creator may grant access.
@@ -159,21 +163,40 @@ export async function grantPortalAccessAction(
     return { error: "An account with that email already exists." };
   }
 
-  const passwordHash = await bcrypt.hash(password.data, 10);
-  const [account] = await db
-    .insert(users)
-    .values({
-      name: `${tenant.firstName} ${tenant.lastName}`,
-      email,
-      passwordHash,
-      role: "tenant",
-    })
-    .returning({ id: users.id });
+  const started = await createTenantInvitation(tenant.id);
+  if (!started.ok) {
+    return {
+      error: `An invite was just emailed to ${email}. Try again in a few minutes.`,
+    };
+  }
 
-  await db
-    .update(tenants)
-    .set({ accountId: account.id })
-    .where(eq(tenants.id, tenantId));
+  const send = await sendPortalInviteEmail({
+    to: email,
+    tenantName: `${tenant.firstName} ${tenant.lastName}`.trim(),
+    landlordName: session.user.name ?? "Your landlord",
+    setupUrl: `${appUrl()}/portal-setup?token=${encodeURIComponent(started.token)}`,
+    expiresInHours: INVITE_TTL_HOURS,
+  });
+
+  // No API key means the invite was logged to the dev console instead — that is
+  // the local test path, not a failure. When a key is set, a rejected send must
+  // reach the landlord: otherwise the card claims an invite went out while the
+  // tenant never received anything (with no verified domain, every send is
+  // rejected). Roll the token back too, so "try again" isn't stuck behind the
+  // resend cooldown after the config is fixed.
+  if (!send.delivered && emailDiagnostics().configured) {
+    await db
+      .delete(tenantInvitations)
+      .where(
+        and(
+          eq(tenantInvitations.tenantId, tenantId),
+          isNull(tenantInvitations.usedAt),
+        ),
+      );
+    return {
+      error: `The invite couldn't be emailed to ${email}: ${send.reason ?? "the provider rejected it"}. Check Settings → Email delivery.`,
+    };
+  }
 
   await awardXp(session.user.id, "portal_granted");
   revalidateTenantPaths();
@@ -193,20 +216,32 @@ export async function revokePortalAccessAction(
     .where(and(eq(tenants.id, tenantId), eq(tenants.userId, session.user.id)))
     .limit(1);
   if (!tenant) return { error: "Tenant not found." };
-  if (!tenant.accountId) return { error: "Portal access is not granted." };
 
   // Maintenance requests the tenant filed reference their user row and would
   // cascade away with the account — reassign them to the landlord first.
-  await db
-    .update(maintenanceRequests)
-    .set({ userId: session.user.id })
-    .where(eq(maintenanceRequests.userId, tenant.accountId));
+  if (tenant.accountId) {
+    await db
+      .update(maintenanceRequests)
+      .set({ userId: session.user.id })
+      .where(eq(maintenanceRequests.userId, tenant.accountId));
 
-  await db.delete(users).where(eq(users.id, tenant.accountId));
-  await db
-    .update(tenants)
-    .set({ accountId: null })
-    .where(eq(tenants.id, tenantId));
+    await db.delete(users).where(eq(users.id, tenant.accountId));
+    await db
+      .update(tenants)
+      .set({ accountId: null })
+      .where(eq(tenants.id, tenantId));
+  }
+
+  // A pending invite is also revoked here, so an emailed link stops working
+  // the moment the landlord changes their mind.
+  const [revokedInvite] = await db
+    .delete(tenantInvitations)
+    .where(eq(tenantInvitations.tenantId, tenantId))
+    .returning({ id: tenantInvitations.id });
+
+  if (!tenant.accountId && !revokedInvite) {
+    return { error: "Portal access is not granted." };
+  }
 
   revalidateTenantPaths();
   revalidatePath(`/tenants/${tenantId}/edit`);

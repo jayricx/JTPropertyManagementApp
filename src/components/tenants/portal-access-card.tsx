@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { KeyRoundIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MailIcon } from "lucide-react";
 import {
-  grantPortalAccessAction,
+  sendPortalInviteAction,
   revokePortalAccessAction,
 } from "@/app/(dashboard)/tenants/actions";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 
 interface PortalAccessCardProps {
   tenantId: string;
@@ -26,14 +26,21 @@ interface PortalAccessCardProps {
   granted: boolean;
 }
 
+/**
+ * Grants portal access by emailing the tenant a link they use once to choose
+ * their own password. The landlord never needs to know the password.
+ */
 export function PortalAccessCard({
   tenantId,
   tenantName,
   email,
   granted,
 }: PortalAccessCardProps) {
-  const [password, setPassword] = useState("");
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  /** Set once an invite goes out, so the landlord gets confirmation even though
+   * the account only appears after the tenant finishes setup. */
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function handleGrant(e: FormEvent<HTMLFormElement>) {
@@ -42,13 +49,12 @@ export function PortalAccessCard({
     startTransition(async () => {
       const formData = new FormData();
       formData.set("tenantId", tenantId);
-      formData.set("password", password);
-      const result = await grantPortalAccessAction(null, formData);
+      const result = await sendPortalInviteAction(null, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
-      setPassword("");
+      setSentTo(email);
     });
   }
 
@@ -56,7 +62,13 @@ export function PortalAccessCard({
     setError(null);
     startTransition(async () => {
       const result = await revokePortalAccessAction(tenantId);
-      if (result?.error) setError(result.error);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setSentTo(null);
+      // Pull the fresh server state so `granted` flips back to the invite form.
+      router.refresh();
     });
   }
 
@@ -64,7 +76,7 @@ export function PortalAccessCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <KeyRoundIcon className="h-4 w-4" />
+          <MailIcon className="h-4 w-4" />
           Tenant portal
           {granted && <Badge variant="outline">Active</Badge>}
         </CardTitle>
@@ -79,8 +91,8 @@ export function PortalAccessCard({
             <p className="text-sm">
               {email ? (
                 <>
-                  Signs in with{" "}
-                  <span className="font-medium">{email}</span>
+                  <span className="font-medium">{email}</span> can sign in to the
+                  portal with their own password.
                 </>
               ) : (
                 "Portal access is active."
@@ -95,29 +107,60 @@ export function PortalAccessCard({
               {pending ? "Revoking…" : "Revoke access"}
             </Button>
           </div>
+        ) : sentTo ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Invite emailed to{" "}
+              <span className="font-medium">{sentTo}</span> — it becomes active
+              once they choose their password.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  setError(null);
+                  startTransition(async () => {
+                    const formData = new FormData();
+                    formData.set("tenantId", tenantId);
+                    const result = await sendPortalInviteAction(null, formData);
+                    if (result?.error) setError(result.error);
+                  });
+                }}
+              >
+                {pending ? "Sending…" : "Resend invite"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={handleRevoke}
+              >
+                Cancel invite
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                The link expires in 3 days. Resending is limited to one email
+                every few minutes.
+              </p>
+            </div>
+          </div>
         ) : !email ? (
           <p className="text-sm text-muted-foreground">
             Add an email address for this tenant, then grant portal access.
           </p>
         ) : (
           <form onSubmit={handleGrant} className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              type="password"
-              placeholder="Portal password (min 8 characters)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              aria-label="Portal password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-              className="sm:flex-1"
-            />
             <Button type="submit" disabled={pending}>
-              {pending ? "Granting…" : "Grant access"}
+              {pending ? "Sending…" : "Email an invite"}
             </Button>
+            <p className="text-sm text-muted-foreground sm:flex-1">
+              We&apos;ll email a link they use once to choose their own
+              password.
+            </p>
           </form>
         )}
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
       </CardContent>
     </Card>
   );

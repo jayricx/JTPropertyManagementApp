@@ -284,6 +284,43 @@ export async function sendVerificationCodeEmail(
   });
 }
 
+export interface PortalInviteEmail {
+  to: string;
+  tenantName: string;
+  landlordName: string;
+  setupUrl: string;
+  expiresInHours: number;
+}
+
+/**
+ * The portal invite. Written for a tenant who will not read a paragraph: one
+ * button, one sentence about what it is, and nothing else to do but click.
+ */
+export async function sendPortalInviteEmail(
+  r: PortalInviteEmail,
+): Promise<SendResult> {
+  const tenantLabel = escapeHtml(r.tenantName);
+  const landlordLabel = escapeHtml(r.landlordName);
+  const setupUrl = escapeHtml(r.setupUrl);
+  const portalUrl = `${APP_URL}/portal`;
+
+  return sendEmail({
+    to: r.to,
+    subject: `${escapeHtml(r.landlordName)} invited you to your tenant portal`,
+    text: `Hi ${r.tenantName},\n\n${r.landlordName} has set up your tenant portal, where you can see your lease, pay rent, and report repairs.\n\nChoose your password here — it takes a moment and works once:\n${r.setupUrl}\n\nOr sign in any time after that at:\n${portalUrl}\n\n— JT Property Management`,
+    html: emailShell(
+      "You're invited to your tenant portal",
+      `<p>Hi ${tenantLabel},</p>
+       <p>${landlordLabel} has set up your tenant portal — your lease, rent payments and repairs, in one place.</p>
+       <p>Choose a password to get started:</p>
+       <p><a href="${setupUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;">Set my password</a></p>
+       <p style="color:#6b7280;font-size:13px;">The button works once and expires in ${r.expiresInHours} hours. After that, you sign in with your email and password.</p>
+       <p style="color:#6b7280;font-size:13px;">If the button doesn't work, paste this link into your browser:<br>${setupUrl}</p>
+       <p style="color:#6b7280;font-size:13px;">Didn't expect this? You can ignore it — nothing has changed.</p>`,
+    ),
+  });
+}
+
 export interface PasswordResetEmail {
   to: string;
   name: string | null;
