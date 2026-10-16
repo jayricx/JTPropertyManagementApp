@@ -7,6 +7,12 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, maintenanceRequests, payments, properties, tenants, units } from "@/db/schema";
+import { documents } from "@/db/schema";
+import {
+  sanitizeFileName,
+  validateMediaFile,
+  validateMediaSelection,
+} from "@/lib/attachments";
 import { gcashPaymentNote, recordRentPayment } from "@/lib/rent-payment";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
@@ -130,16 +136,52 @@ export async function createTenantRequestAction(
     return { error: "Your unit could not be found." };
   }
 
-  await db.insert(maintenanceRequests).values({
-    propertyId: unit.propertyId,
-    unitId: lease.unitId,
-    tenantId: tenant.id,
-    userId: session.user.id,
-    title: parsed.data.title,
-    description: parsed.data.description,
-    status: "new",
-    priority: parsed.data.priority,
-  });
+  const media = formData
+    .getAll("files")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  for (const file of media) {
+    const check = validateMediaFile(file);
+    if (!check.ok) return { error: check.error };
+  }
+  const selection = validateMediaSelection(media);
+  if (!selection.ok) return { error: selection.error };
+
+  const [created] = await db
+    .insert(maintenanceRequests)
+    .values({
+      propertyId: unit.propertyId,
+      unitId: lease.unitId,
+      tenantId: tenant.id,
+      userId: session.user.id,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      status: "new",
+      priority: parsed.data.priority,
+    })
+    .returning({ id: maintenanceRequests.id });
+
+  // Attachments are best-effort: a failed photo must not swallow the
+  // report the tenant just filed.
+  for (const file of media) {
+    try {
+      const id = crypto.randomUUID();
+      const bytes = Buffer.from(await file.arrayBuffer());
+      await db.insert(documents).values({
+        id,
+        userId: session.user.id,
+        maintenanceRequestId: created.id,
+        propertyId: unit.propertyId,
+        unitId: lease.unitId,
+        name: sanitizeFileName(file.name),
+        url: `/api/documents/${id}`,
+        type: file.type,
+        sizeBytes: bytes.byteLength,
+        data: bytes.toString("base64"),
+      });
+    } catch {
+      console.error("[portal] attachment failed", file.name);
+    }
+  }
 
   revalidatePath("/portal");
   // The landlord's maintenance list and dashboard KPI show the new request.

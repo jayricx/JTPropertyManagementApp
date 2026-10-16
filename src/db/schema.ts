@@ -467,6 +467,11 @@ export const documents = pgTable(
     }),
     unitId: uuid("unit_id").references(() => units.id, { onDelete: "set null" }),
     leaseId: uuid("lease_id").references(() => leases.id, { onDelete: "set null" }),
+    // Photos/videos a tenant attached to the issue they reported.
+    maintenanceRequestId: uuid("maintenance_request_id").references(
+      () => maintenanceRequests.id,
+      { onDelete: "cascade" },
+    ),
     name: varchar("name", { length: 255 }).notNull(),
     /** Canonical path for DB-stored files; an object-storage key later. */
     url: varchar("url", { length: 1000 }).notNull(),
@@ -479,6 +484,7 @@ export const documents = pgTable(
   (t) => [
     index("documents_lease_id_idx").on(t.leaseId),
     index("documents_property_id_idx").on(t.propertyId),
+    index("documents_maintenance_request_id_idx").on(t.maintenanceRequestId),
   ],
 );
 

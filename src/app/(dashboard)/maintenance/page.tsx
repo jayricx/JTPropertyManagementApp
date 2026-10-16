@@ -1,7 +1,13 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { maintenanceRequests, properties, tenants, units } from "@/db/schema";
+import {
+  documents,
+  maintenanceRequests,
+  properties,
+  tenants,
+  units,
+} from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -19,6 +25,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { MaintenanceFormDialog } from "@/components/maintenance/maintenance-form-dialog";
+import {
+  RequestMediaStrip,
+  type RequestMediaItem,
+} from "@/components/maintenance/request-media";
 import { MaintenanceRowActions } from "@/components/maintenance/maintenance-row-actions";
 import { accessiblePropertyIds, manageablePropertyIds } from "@/lib/access";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -63,6 +73,7 @@ export default async function MaintenancePage() {
   ]);
   const canManageAny = manageableIds.length > 0;
   const manageableSet = new Set(manageableIds);
+
 
   const [requestRows, propertyRows, unitRows, tenantRows] = await Promise.all([
     db
@@ -114,6 +125,32 @@ export default async function MaintenancePage() {
       .where(eq(tenants.userId, userId))
       .orderBy(asc(tenants.lastName), asc(tenants.firstName)),
   ]);
+
+  // Photos/video the tenant attached to each report.
+  const mediaByRequest = new Map<string, RequestMediaItem[]>();
+  if (requestRows.length) {
+    const mediaRows = await db
+      .select({
+        id: documents.id,
+        maintenanceRequestId: documents.maintenanceRequestId,
+        name: documents.name,
+        type: documents.type,
+        sizeBytes: documents.sizeBytes,
+      })
+      .from(documents)
+      .where(
+        inArray(
+          documents.maintenanceRequestId,
+          requestRows.map((r) => r.id),
+        ),
+      );
+    for (const m of mediaRows) {
+      if (!m.maintenanceRequestId) continue;
+      const list = mediaByRequest.get(m.maintenanceRequestId) ?? [];
+      list.push({ id: m.id, name: m.name, type: m.type, sizeBytes: m.sizeBytes });
+      mediaByRequest.set(m.maintenanceRequestId, list);
+    }
+  }
 
   const propertyOptions = propertyRows.map((p) => ({ id: p.id, label: p.name }));
   const unitOptions = unitRows.map((u) => ({
@@ -203,6 +240,10 @@ export default async function MaintenancePage() {
                           {r.description}
                         </div>
                       )}
+                      <RequestMediaStrip
+                        items={mediaByRequest.get(r.id) ?? []}
+                        size="xs"
+                      />
                     </TableCell>
                     <TableCell>
                       <div>{r.unitName}</div>

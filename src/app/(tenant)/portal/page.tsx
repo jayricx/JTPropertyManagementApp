@@ -4,6 +4,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import {
+  documents,
   leases,
   maintenanceRequests,
   payments,
@@ -30,6 +31,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TenantRequestForm } from "@/components/portal/tenant-request-form";
+import {
+  RequestMediaStrip,
+  type RequestMediaItem,
+} from "@/components/maintenance/request-media";
 import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
 import { signLeaseAsTenantAction } from "@/app/(tenant)/portal/actions";
 import { getLeaseSignatures } from "@/lib/signatures";
@@ -155,6 +160,32 @@ export default async function TenantPortalPage({
         .where(inArray(payments.leaseId, leaseIds))
         .orderBy(desc(payments.paidDate))
     : [];
+
+  // Media attached to each of this tenant's reports.
+  const mediaByRequest = new Map<string, RequestMediaItem[]>();
+  if (requestRows.length) {
+    const mediaRows = await db
+      .select({
+        id: documents.id,
+        maintenanceRequestId: documents.maintenanceRequestId,
+        name: documents.name,
+        type: documents.type,
+        sizeBytes: documents.sizeBytes,
+      })
+      .from(documents)
+      .where(
+        inArray(
+          documents.maintenanceRequestId,
+          requestRows.map((r) => r.id),
+        ),
+      );
+    for (const m of mediaRows) {
+      if (!m.maintenanceRequestId) continue;
+      const list = mediaByRequest.get(m.maintenanceRequestId) ?? [];
+      list.push({ id: m.id, name: m.name, type: m.type, sizeBytes: m.sizeBytes });
+      mediaByRequest.set(m.maintenanceRequestId, list);
+    }
+  }
 
   const active = leaseRows.find((l) => l.status === "active") ?? null;
   const lastPayment = paymentRows[0] ?? null;
@@ -468,6 +499,7 @@ export default async function TenantPortalPage({
                       {r.description}
                     </p>
                   )}
+                  <RequestMediaStrip items={mediaByRequest.get(r.id) ?? []} />
                   <p className="mt-1 text-xs text-muted-foreground">
                     Reported {formatDate(r.createdAt)}
                     {r.resolvedAt && r.status === "resolved"

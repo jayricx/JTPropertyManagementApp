@@ -28,6 +28,73 @@ export const ALLOWED_ATTACHMENT_TYPES: Record<string, string> = {
 
 export type AttachmentKind = (typeof ALLOWED_ATTACHMENT_TYPES)[string];
 
+/** Images can be served inline (thumbnails); everything else downloads. */
+export const INLINE_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+/**
+ * Photos and short video clips a tenant attaches to a reported issue.
+ *
+ * The combined budget is deliberately small: Vercel's serverless runtime
+ * caps a request body at ~4.5MB, so the whole multipart body has to fit
+ * under that. Photos are re-encoded client-side before upload (see
+ * `src/lib/media-client.ts`), which keeps three phone photos near 1MB and
+ * leaves room for one short clip.
+ */
+export const MAX_MEDIA_FILES = 3;
+export const MAX_MEDIA_FILE_BYTES = 4 * 1024 * 1024;
+export const MAX_MEDIA_TOTAL_BYTES = 4 * 1024 * 1024;
+
+export const ALLOWED_MEDIA_TYPES: Record<string, AttachmentKind> = {
+  ...ALLOWED_ATTACHMENT_TYPES,
+  "video/mp4": "Video",
+  "video/quicktime": "Video",
+  "video/webm": "Video",
+};
+
+/** Validate one picked file against the media rules. */
+export function validateMediaFile(
+  file: File,
+): { ok: true } | { ok: false; error: string } {
+  const name = sanitizeFileName(file.name);
+  if (!(file.type in ALLOWED_MEDIA_TYPES)) {
+    return {
+      ok: false,
+      error: `“${name}” isn't a supported photo or video.`,
+    };
+  }
+  if (file.size > MAX_MEDIA_FILE_BYTES) {
+    return {
+      ok: false,
+      error: `“${name}” is ${formatBytes(file.size)} — the limit is 4 MB per file.`,
+    };
+  }
+  return { ok: true };
+}
+
+/** Validate the whole selection (count + combined size). */
+export function validateMediaSelection(files: File[]):
+  | { ok: true }
+  | { ok: false; error: string } {
+  if (files.length > MAX_MEDIA_FILES) {
+    return {
+      ok: false,
+      error: `Attach up to ${MAX_MEDIA_FILES} files per report.`,
+    };
+  }
+  const total = files.reduce((sum, f) => sum + f.size, 0);
+  if (total > MAX_MEDIA_TOTAL_BYTES) {
+    return {
+      ok: false,
+      error: `Those files add up to ${formatBytes(total)} — the limit is 4 MB in total.`,
+    };
+  }
+  return { ok: true };
+}
+
 /** Shape a browser-supplied filename for display and download headers. */
 export function sanitizeFileName(name: string): string {
   const base = name
