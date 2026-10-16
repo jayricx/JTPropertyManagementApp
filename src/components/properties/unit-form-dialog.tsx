@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PencilIcon, PlusIcon } from "lucide-react";
@@ -41,9 +41,12 @@ import {
 } from "@/lib/validations";
 import {
   createUnitAction,
+  suggestRentAction,
   updateUnitAction,
   type ActionState,
 } from "@/app/(dashboard)/properties/actions";
+import { SuggestionChip } from "@/components/ai/suggestion-chip";
+import type { RentSuggestion } from "@/lib/rent-insights";
 
 interface UnitFormDialogProps {
   propertyId: string;
@@ -57,6 +60,25 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
     action,
     null,
   );
+
+  // Rent suggestion from comparable units in this property (or the wider
+  // city when the property has too few of them).
+  const unitId = unit?.id;
+  const [rentHint, setRentHint] = useState<RentSuggestion | null>(null);
+  const [applied, setApplied] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    suggestRentAction(unitId ? { unitId } : { propertyId })
+      .then((result) => {
+        if (!cancelled) setRentHint(result);
+      })
+      .catch(() => {
+        if (!cancelled) setRentHint(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, unitId]);
 
   const form = useForm<UnitFormValues, unknown, UnitFormParsed>({
     resolver: zodResolver(unitSchema),
@@ -171,6 +193,22 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
                   </FormItem>
                 )}
               />
+              {rentHint && !applied && !form.formState.dirtyFields.rentAmount && (
+                <div className="col-span-full">
+                  <SuggestionChip
+                    title={rentHint.headline}
+                    detail={`Range ₱${rentHint.low.toLocaleString("en-PH")}–₱${rentHint.high.toLocaleString("en-PH")} · ${rentHint.reasons[0] ?? ""}`}
+                    source={rentHint.source}
+                    onApply={() => {
+                      form.setValue("rentAmount", String(rentHint.suggestedRent), {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      setApplied(true);
+                    }}
+                  />
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField

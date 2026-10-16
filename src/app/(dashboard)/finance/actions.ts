@@ -6,6 +6,10 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { expenses, payments, units } from "@/db/schema";
 import { canManageLease, canManageProperty } from "@/lib/access";
+import {
+  suggestExpenseCategory,
+  type ExpenseSuggestion,
+} from "@/lib/expense-intelligence";
 import { awardXp } from "@/lib/gamification";
 import { monthRangeDates } from "@/lib/utils";
 import {
@@ -18,6 +22,25 @@ import {
 
 /** `ok` lets dialog forms close themselves after a successful mutation. */
 export type ActionState = { error?: string; ok?: boolean } | null;
+
+/**
+ * Read-only: suggest an expense category from this landlord's own history,
+ * the model (when configured), or vendor keywords. Returns null when there
+ * is no signal — the form then shows nothing rather than a weak guess.
+ */
+export async function suggestExpenseCategoryAction(
+  vendor: string,
+  notes: string,
+): Promise<ExpenseSuggestion | null> {
+  const session = await auth();
+  if (!session?.user) return null;
+  if (vendor.trim().length < 3 && notes.trim().length < 4) return null;
+  return suggestExpenseCategory({
+    userId: session.user.id,
+    vendor,
+    notes,
+  });
+}
 
 function toFormDataRecord(formData: FormData): Record<string, string> {
   const record: Record<string, string> = {};

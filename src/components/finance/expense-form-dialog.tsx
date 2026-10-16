@@ -36,11 +36,15 @@ import {
   expenseCategories,
   expenseCategoryLabels,
   expenseSchema,
+  type ExpenseCategory,
   type ExpenseFormParsed,
   type ExpenseFormValues,
 } from "@/lib/validations";
+import type { ExpenseSuggestion } from "@/lib/expense-intelligence";
+import { SuggestionChip } from "@/components/ai/suggestion-chip";
 import {
   createExpenseAction,
+  suggestExpenseCategoryAction,
   updateExpenseAction,
 } from "@/app/(dashboard)/finance/actions";
 
@@ -93,6 +97,19 @@ export function ExpenseFormDialog({
     (u) => u.propertyId === selectedPropertyId,
   );
 
+  // Category suggestion, debounced so typing a vendor name doesn't fire a
+  // request per keystroke. A category the user picked themselves always
+  // wins over a suggestion.
+  const vendor = form.watch("vendor");
+  const notes = form.watch("notes");
+  const [suggestion, setSuggestion] = useState<ExpenseSuggestion | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [appliedCategory, setAppliedCategory] = useState<ExpenseCategory | null>(null);
+
+  const showSuggestion =
+    suggestion !== null &&
+    !form.formState.dirtyFields.category &&
+    suggestion.category !== appliedCategory;
   // Prefill today's date when a fresh dialog opens (client-local date).
   useEffect(() => {
     if (!open || expense) return;
@@ -100,6 +117,27 @@ export function ExpenseFormDialog({
       form.setValue("expenseDate", todayIso());
     }
   }, [open, expense, form]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (`${vendor} ${notes}`.trim().length < 4) {
+      setSuggestion(null);
+      return;
+    }
+    let cancelled = false;
+    setSuggesting(true);
+    const timer = setTimeout(async () => {
+      const result = await suggestExpenseCategoryAction(vendor ?? "", notes ?? "");
+      if (cancelled) return;
+      setSuggestion(result);
+      setSuggesting(false);
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setSuggesting(false);
+    };
+  }, [vendor, notes, open]);
 
   function onSubmit(values: ExpenseFormParsed) {
     const formData = new FormData();
@@ -334,6 +372,21 @@ export function ExpenseFormDialog({
                 </FormItem>
               )}
             />
+            {showSuggestion && suggestion && (
+              <SuggestionChip
+                title={`${expenseCategoryLabels[suggestion.category]} · ${Math.round(suggestion.confidence * 100)}% match`}
+                detail={suggestion.reason}
+                source={suggestion.source}
+                thinking={suggesting}
+                onApply={() => {
+                  form.setValue("category", suggestion.category, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setAppliedCategory(suggestion.category);
+                }}
+              />
+            )}
             {error && (
               <p className="text-sm font-medium text-destructive">{error}</p>
             )}

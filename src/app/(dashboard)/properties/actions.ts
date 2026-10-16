@@ -2,15 +2,65 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { properties, propertyCollaborators, units, users } from "@/db/schema";
-import { canManageProperty, isPropertyOwner } from "@/lib/access";
+import { accessiblePropertyIds, canManageProperty, isPropertyOwner } from "@/lib/access";
 import { awardXp } from "@/lib/gamification";
+import {
+  suggestRentForUnit,
+  type RentSuggestion,
+} from "@/lib/rent-insights";
+import { isUuid } from "@/lib/utils";
 import { propertySchema, unitSchema, type UnitFormParsed } from "@/lib/validations";
 
 export type ActionState = { error: string } | null;
+
+/**
+ * Read-only: a rent suggestion for a unit, or for a new unit in a property,
+ * built from comparable units this landlord already rents out. Returns null
+ * when there is nothing to compare against.
+ */
+export async function suggestRentAction(input: {
+  unitId?: string;
+  propertyId?: string;
+}): Promise<RentSuggestion | null> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return null;
+  if (input.unitId && !isUuid(input.unitId)) return null;
+  if (input.propertyId && !isUuid(input.propertyId)) return null;
+
+  // Checked in SQL so a crafted id can never pull another landlord's
+  // comparables into the answer.
+  const accessible = await accessiblePropertyIds(userId);
+
+  if (input.unitId) {
+    const [unit] = await db
+      .select({
+        id: units.id,
+        propertyId: units.propertyId,
+        city: properties.city,
+      })
+      .from(units)
+      .innerJoin(properties, eq(units.propertyId, properties.id))
+      .where(
+        and(
+          eq(units.id, input.unitId),
+          inArray(properties.id, accessible.length ? accessible : [""]),
+        ),
+      )
+      .limit(1);
+    if (!unit) return null;
+    return suggestRentForUnit({ unitId: unit.id });
+  }
+
+  if (input.propertyId && accessible.includes(input.propertyId)) {
+    return suggestRentForUnit({ propertyId: input.propertyId });
+  }
+  return null;
+}
 
 function toFormDataRecord(formData: FormData): Record<string, string> {
   const record: Record<string, string> = {};
