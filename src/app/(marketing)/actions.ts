@@ -14,7 +14,17 @@ import {
 } from "@/lib/password-reset";
 
 export type PasswordActionState =
-  | { error?: string; sent?: boolean; ok?: boolean }
+  | {
+      error?: string;
+      sent?: boolean;
+      ok?: boolean;
+      /**
+       * True when this request was inside the resend window, so no new email
+       * went out. Never set for unknown addresses — see the note on
+       * requestPasswordResetAction.
+       */
+      throttled?: boolean;
+    }
   | null;
 
 const requestSchema = z.object({
@@ -65,8 +75,13 @@ export async function requestPasswordResetAction(
     // Password accounts only — the row must be able to sign in at all.
     .limit(1);
 
+  // The cooldown stays invisible for unknown addresses — `sent` and `sent` plus
+  // the neutral hint below are the same either way, so the reply still reveals
+  // nothing about whether the account exists.
+  let throttled = false;
+
   if (user) {
-    const throttled = await resetRequestThrottled(user.id);
+    throttled = await resetRequestThrottled(user.id);
     if (!throttled) {
       const { token } = await createResetToken(user.id);
       await sendPasswordResetEmail({
@@ -78,7 +93,15 @@ export async function requestPasswordResetAction(
     }
   }
 
-  return { sent: true };
+  if (throttled) {
+    // Server-side breadcrumb only. Surfacing this in the reply would tell an
+    // unknown address that the account exists.
+    console.log(
+      "[password-reset] request suppressed by the resend cooldown",
+    );
+  }
+
+  return { sent: true, throttled };
 }
 
 /** Consume a reset link and set the new password. */

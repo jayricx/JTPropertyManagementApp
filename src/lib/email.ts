@@ -249,6 +249,41 @@ export async function sendPaymentReceipt(r: PaymentReceipt): Promise<SendResult>
   });
 }
 
+export interface VerificationCodeEmail {
+  to: string;
+  name: string | null;
+  code: string;
+  expiresInMinutes: number;
+}
+
+/**
+ * The registration code. The digits are rendered large and spaced out because
+ * they get read off a phone and typed back in by hand.
+ */
+export async function sendVerificationCodeEmail(
+  r: VerificationCodeEmail,
+): Promise<SendResult> {
+  const nameLabel = escapeHtml(r.name ?? "");
+  const greeting = r.name ? `Hi ${nameLabel},` : "Hi,";
+  const codeLabel = escapeHtml(r.code);
+  const portalUrl = `${APP_URL}/dashboard`;
+
+  return sendEmail({
+    to: r.to,
+    subject: `${r.code} is your JT Property Management code`,
+    text: `${greeting}\n\nYour verification code is ${r.code}\n\nEnter it to finish creating your account. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign up, you can ignore this email — no account was created.\n\n— JT Property Management`,
+    html: emailShell(
+      "Confirm your email",
+      `<p>${greeting}</p>
+       <p>Enter this code to finish creating your account:</p>
+       <p style="font-size:32px;letter-spacing:10px;font-weight:700;margin:20px 0;color:#064e3b;">${codeLabel}</p>
+       <p style="color:#6b7280;font-size:13px;">It works once and expires in ${r.expiresInMinutes} minutes.</p>
+       <p style="color:#6b7280;font-size:13px;">If you didn't try to sign up, you can ignore this email — no account was created.</p>
+       <p><a href="${portalUrl}" style="font-size:13px;color:#6b7280;">Open JT Property Management</a></p>`,
+    ),
+  });
+}
+
 export interface PasswordResetEmail {
   to: string;
   name: string | null;

@@ -4,6 +4,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
+import { sendVerificationCodeEmail } from "@/lib/email";
+import {
+  beginRegistration,
+  CODE_TTL_MINUTES,
+  purgeExpiredPendingRegistrations,
+} from "@/lib/email-verification";
 
 const registerSchema = z.object({
   name: z.string().min(2).max(100),
@@ -11,6 +17,13 @@ const registerSchema = z.object({
   password: z.string().min(8).max(100),
 });
 
+/**
+ * Start a signup.
+ *
+ * The account is not created here — only a pending registration, plus a code
+ * emailed to the address. The real row appears once that code comes back
+ * (see /verify-code), so an unverified address never holds a usable login.
+ */
 export async function POST(request: Request) {
   try {
     if (!process.env.DATABASE_URL) {
@@ -48,13 +61,36 @@ export async function POST(request: Request) {
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const [created] = await db
-      .insert(users)
-      .values({ name, email: normalizedEmail, passwordHash })
-      .returning({ id: users.id });
+    // Cheap cleanup of signups abandoned long ago.
+    await purgeExpiredPendingRegistrations().catch(() => {});
 
-    return NextResponse.json({ id: created.id }, { status: 201 });
+    const started = await beginRegistration({
+      email: normalizedEmail,
+      name,
+      passwordHash: await bcrypt.hash(password, 10),
+    });
+
+    if (!started.ok) {
+      return NextResponse.json(
+        {
+          error: "We just emailed a code to that address. Give it a moment before asking for another.",
+          retryInSeconds: started.retryInSeconds,
+        },
+        { status: 429 },
+      );
+    }
+
+    await sendVerificationCodeEmail({
+      to: normalizedEmail,
+      name,
+      code: started.code,
+      expiresInMinutes: CODE_TTL_MINUTES,
+    });
+
+    return NextResponse.json(
+      { email: normalizedEmail, expiresInMinutes: CODE_TTL_MINUTES },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("Registration error:", error);
     return NextResponse.json(

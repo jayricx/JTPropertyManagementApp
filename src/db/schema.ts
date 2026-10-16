@@ -386,6 +386,34 @@ export const passwordResetTokens = pgTable(
   ],
 );
 
+/**
+ * A registration that has been started but not yet proven to own the address.
+ *
+ * The account is deliberately *not* created until the emailed code comes back,
+ * so an unverified address can never hold a usable login. One row per address:
+ * a new attempt replaces the old one.
+ */
+export const pendingRegistrations = pgTable(
+  "pending_registrations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: varchar("email", { length: 255 }).notNull(),
+    name: varchar("name", { length: 255 }),
+    passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+    /** HMAC of the emailed code — never the code itself. */
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    /** Wrong guesses so far; the row is dropped once this hits the cap. */
+    attempts: integer("attempts").default(0).notNull(),
+    lastSentAt: timestamp("last_sent_at", { mode: "date" }),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("pending_registrations_email_key").on(t.email),
+    index("pending_registrations_expires_at_idx").on(t.expiresAt),
+  ],
+);
+
 export const maintenanceStatusEnum = pgEnum("maintenance_status", [
   "new",
   "in_progress",
