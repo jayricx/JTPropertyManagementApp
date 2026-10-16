@@ -404,6 +404,30 @@ export const maintenanceRequests = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Lease attachments — files live in Postgres as base64 text while object
+// storage credentials are unavailable, which works on Vercel (where the
+// filesystem is read-only) with no external service. `url` keeps the
+// canonical path and is where an R2/S3 key goes later; `data` is null once
+// that migration happens.
+// ---------------------------------------------------------------------------
+
+export const leaseNotes = pgTable(
+  "lease_notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leaseId: uuid("lease_id")
+      .notNull()
+      .references(() => leases.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("lease_notes_lease_id_idx").on(t.leaseId)],
+);
+
 export const documents = pgTable(
   "documents",
   {
@@ -417,12 +441,18 @@ export const documents = pgTable(
     unitId: uuid("unit_id").references(() => units.id, { onDelete: "set null" }),
     leaseId: uuid("lease_id").references(() => leases.id, { onDelete: "set null" }),
     name: varchar("name", { length: 255 }).notNull(),
+    /** Canonical path for DB-stored files; an object-storage key later. */
     url: varchar("url", { length: 1000 }).notNull(),
     type: varchar("type", { length: 100 }),
     sizeBytes: integer("size_bytes"),
+    /** Base64 bytes, or null once objects move to R2/S3. */
+    data: text("data"),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
-  (t) => [index("documents_user_id_idx").on(t.userId)],
+  (t) => [
+    index("documents_lease_id_idx").on(t.leaseId),
+    index("documents_property_id_idx").on(t.propertyId),
+  ],
 );
 
 export const notifications = pgTable(

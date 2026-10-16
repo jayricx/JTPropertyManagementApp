@@ -226,6 +226,14 @@ export const leaseSignatureSchema = z.object({
     .optional(),
 });
 
+export const leaseNoteSchema = z.object({
+  body: z
+    .string()
+    .trim()
+    .min(1, "Write something first.")
+    .max(2000, "Notes are limited to 2000 characters."),
+});
+
 export const paymentMethods = [
   "cash",
   "check",

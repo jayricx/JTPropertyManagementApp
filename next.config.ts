@@ -10,6 +10,13 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
+  experimental: {
+    serverActions: {
+      // Default is 1MB; lease attachments are capped at 5MB and multipart
+      // framing adds a little on top.
+      bodySizeLimit: "8mb",
+    },
+  },
   turbopack: {
     rules: {
       "*.css": {

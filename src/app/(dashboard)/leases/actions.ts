@@ -5,12 +5,17 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, tenants, units } from "@/db/schema";
-import { canManageUnit } from "@/lib/access";
+import { documents, leaseNotes, leases, tenants, units } from "@/db/schema";
+import { canManageLease, canManageUnit } from "@/lib/access";
+import {
+  sanitizeFileName,
+  validateAttachment,
+} from "@/lib/attachments";
 import { awardXp } from "@/lib/gamification";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
 import {
+  leaseNoteSchema,
   leaseSchema,
   leaseSignatureSchema,
   type LeaseFormParsed,
@@ -20,6 +25,139 @@ export type ActionState = { error: string } | null;
 
 /** Shape for the signature form (landlord + tenant sides share it). */
 export type SignatureFormState = { error?: string; ok?: boolean } | null;
+
+/** Shape for the note + attachment forms. */
+export type LeaseRecordState = { error?: string; ok?: boolean } | null;
+
+/** Notes and attachments are landlord-only: viewers are read-only. */
+async function assertCanManageLease(
+  userId: string,
+  leaseId: string,
+): Promise<string | null> {
+  if (!isUuid(leaseId)) return "That lease could not be found.";
+  const allowed = await canManageLease(userId, leaseId);
+  return allowed ? null : "You do not have permission to change this lease.";
+}
+
+export async function addLeaseNoteAction(
+  _prev: LeaseRecordState,
+  formData: FormData,
+): Promise<LeaseRecordState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const leaseId = String(formData.get("leaseId") ?? "");
+  const denied = await assertCanManageLease(session.user.id, leaseId);
+  if (denied) return { error: denied };
+
+  const parsed = leaseNoteSchema.safeParse({ body: formData.get("body") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid note." };
+  }
+
+  await db.insert(leaseNotes).values({
+    leaseId,
+    userId: session.user.id,
+    body: parsed.data.body,
+  });
+
+  revalidatePath(`/leases/${leaseId}/edit`);
+  return { ok: true };
+}
+
+/** Authors can remove their own note; nobody else's. */
+export async function deleteLeaseNoteAction(
+  _prev: LeaseRecordState,
+  formData: FormData,
+): Promise<LeaseRecordState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const noteId = String(formData.get("noteId") ?? "");
+  if (!isUuid(noteId)) return { error: "That note could not be found." };
+
+  const [note] = await db
+    .select({ id: leaseNotes.id, userId: leaseNotes.userId })
+    .from(leaseNotes)
+    .where(eq(leaseNotes.id, noteId))
+    .limit(1);
+  if (!note) return { error: "That note could not be found." };
+  if (note.userId !== session.user.id) {
+    return { error: "You can only delete your own notes." };
+  }
+
+  await db.delete(leaseNotes).where(eq(leaseNotes.id, noteId));
+  revalidatePath("/leases");
+  return { ok: true };
+}
+
+export async function uploadLeaseAttachmentAction(
+  _prev: LeaseRecordState,
+  formData: FormData,
+): Promise<LeaseRecordState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const leaseId = String(formData.get("leaseId") ?? "");
+  const denied = await assertCanManageLease(session.user.id, leaseId);
+  if (denied) return { error: denied };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "Choose a file to upload." };
+
+  const check = validateAttachment(file);
+  if (!check.ok) return { error: check.error };
+
+  // Generate the id here so the canonical url can be stored with the row.
+  const id = crypto.randomUUID();
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  await db.insert(documents).values({
+    id,
+    userId: session.user.id,
+    leaseId,
+    name: sanitizeFileName(file.name),
+    url: `/api/documents/${id}`,
+    type: file.type,
+    sizeBytes: bytes.byteLength,
+    data: bytes.toString("base64"),
+  });
+
+  revalidatePath(`/leases/${leaseId}/edit`);
+  return { ok: true };
+}
+
+export async function deleteLeaseAttachmentAction(
+  _prev: LeaseRecordState,
+  formData: FormData,
+): Promise<LeaseRecordState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const documentId = String(formData.get("documentId") ?? "");
+  if (!isUuid(documentId)) return { error: "That file could not be found." };
+
+  const [doc] = await db
+    .select({
+      id: documents.id,
+      leaseId: documents.leaseId,
+      userId: documents.userId,
+    })
+    .from(documents)
+    .where(eq(documents.id, documentId))
+    .limit(1);
+  if (!doc) return { error: "That file could not be found." };
+  if (doc.leaseId) {
+    const denied = await assertCanManageLease(session.user.id, doc.leaseId);
+    if (denied) return { error: denied };
+  } else if (doc.userId !== session.user.id) {
+    return { error: "You can only delete your own uploads." };
+  }
+
+  await db.delete(documents).where(eq(documents.id, documentId));
+  revalidatePath("/leases");
+  return { ok: true };
+}
 
 /**
  * Sign a lease as the landlord. Typed signatures store the name; drawn

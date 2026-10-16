@@ -1,10 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, properties, tenants, units, users } from "@/db/schema";
+import {
+  documents,
+  leaseNotes,
+  leases,
+  properties,
+  tenants,
+  units,
+  users,
+} from "@/db/schema";
 import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form";
+import { LeaseAttachmentsCard } from "@/components/leases/lease-attachments-card";
+import { LeaseNotesCard } from "@/components/leases/lease-notes-card";
 import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
 import { signLeaseAction } from "@/app/(dashboard)/leases/actions";
 import { accessiblePropertyIds, canManageUnit } from "@/lib/access";
@@ -51,8 +61,15 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
 
   const accessibleIds = await accessiblePropertyIds(userId);
 
-  const [tenantRows, unitRows, signatures, landlordRows, leaseTenantRows] =
-    await Promise.all([
+  const [
+    tenantRows,
+    unitRows,
+    signatures,
+    landlordRows,
+    leaseTenantRows,
+    noteRows,
+    attachmentRows,
+  ] = await Promise.all([
     db
       .select({
         id: tenants.id,
@@ -88,6 +105,32 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         .from(tenants)
         .where(eq(tenants.id, lease.tenantId))
         .limit(1),
+      db
+        .select({
+          id: leaseNotes.id,
+          body: leaseNotes.body,
+          createdAt: leaseNotes.createdAt,
+          userId: leaseNotes.userId,
+          authorName: users.name,
+        })
+        .from(leaseNotes)
+        .innerJoin(users, eq(leaseNotes.userId, users.id))
+        .where(eq(leaseNotes.leaseId, lease.id))
+        .orderBy(desc(leaseNotes.createdAt)),
+      db
+        .select({
+          id: documents.id,
+          name: documents.name,
+          type: documents.type,
+          sizeBytes: documents.sizeBytes,
+          createdAt: documents.createdAt,
+          userId: documents.userId,
+          uploadedBy: users.name,
+        })
+        .from(documents)
+        .innerJoin(users, eq(documents.userId, users.id))
+        .where(eq(documents.leaseId, lease.id))
+        .orderBy(desc(documents.createdAt)),
     ]);
 
   const tenantOptions = tenantRows.map((t) => ({
@@ -140,6 +183,28 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         }
         action={signLeaseAction}
         signedHref={`/leases/${lease.id}/signed`}
+      />
+      <LeaseNotesCard
+        leaseId={lease.id}
+        notes={noteRows.map((n) => ({
+          id: n.id,
+          body: n.body,
+          authorName: n.authorName ?? "Someone",
+          createdAt: n.createdAt,
+          isMine: n.userId === userId,
+        }))}
+      />
+      <LeaseAttachmentsCard
+        leaseId={lease.id}
+        attachments={attachmentRows.map((d) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type,
+          sizeBytes: d.sizeBytes,
+          uploadedBy: d.uploadedBy ?? "Someone",
+          createdAt: d.createdAt,
+          isMine: d.userId === userId,
+        }))}
       />
     </div>
   );
