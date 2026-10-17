@@ -22,7 +22,7 @@ interface PortalAccessCardProps {
   tenantName: string;
   /** Tenant's email — becomes the portal login address. */
   email: string | null;
-  /** True when a tenant-role account is already linked. */
+  /** True when an account is already linked to this roster entry. */
   granted: boolean;
 }
 
@@ -112,7 +112,7 @@ export function PortalAccessCard({
             <p className="text-sm">
               Invite emailed to{" "}
               <span className="font-medium">{sentTo}</span> — it becomes active
-              once they choose their password.
+              once they finish setting up.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Button
@@ -155,8 +155,7 @@ export function PortalAccessCard({
               {pending ? "Sending…" : "Email an invite"}
             </Button>
             <p className="text-sm text-muted-foreground sm:flex-1">
-              We&apos;ll email a link they use once to choose their own
-              password.
+              We&apos;ll email a link they use once to set up their sign-in.
             </p>
           </form>
         )}

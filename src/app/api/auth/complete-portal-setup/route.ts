@@ -13,8 +13,10 @@ const completeSchema = z.object({
 
 /**
  * Finish a tenant's sign-up. The invitation link proved control of the
- * tenant's email, so the account is created here and the tenant is signed in
- * straight away.
+ * tenant's email, so a fresh account is created here and the tenant is signed
+ * in straight away. If the address already has an account — an owner who rents
+ * from another owner — the invite is linked to it instead, and they sign in
+ * with their existing password.
  */
 export async function POST(request: Request) {
   try {
@@ -50,27 +52,51 @@ export async function POST(request: Request) {
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-
     // A crash between the two writes below can leave an account that exists but
     // isn't linked yet — adopt it rather than colliding on the unique email.
-    // Only a tenant-role account may be adopted: if this address signed up as a
-    // landlord after the invite went out, touching its password would hand the
-    // tenant's chosen password to a landlord account.
+    //
+    // An existing account is linked as-is. Only a tenant-only account (the
+    // half-finished crash case) takes the chosen password; an owner's account
+    // keeps its own credentials — the emailed token already proved control of
+    // this address, so linking is authorized without touching their login.
     const [existing] = await db
       .select({ id: users.id, role: users.role })
       .from(users)
       .where(eq(sql`lower(${users.email})`, result.email))
       .limit(1);
-    if (existing && existing.role !== "tenant") {
-      return NextResponse.json(
-        { error: "That email already has an account. Sign in instead." },
-        { status: 409 },
-      );
-    }
 
-    let accountId = existing?.id;
-    if (!accountId) {
+    let accountId: string;
+    let linkedExisting = false;
+
+    if (existing) {
+      // The portal resolves a signed-in user's profile with a single row, so
+      // keep the one-link-per-account invariant (a race between two landlords
+      // inviting the same address is the only way to break it).
+      const [otherLink] = await db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.accountId, existing.id))
+        .limit(1);
+      if (otherLink) {
+        return NextResponse.json(
+          { error: "That email is already linked to another tenancy." },
+          { status: 409 },
+        );
+      }
+
+      accountId = existing.id;
+      if (existing.role === "tenant") {
+        const passwordHash = await bcrypt.hash(password, 10);
+        await db
+          .update(users)
+          .set({ passwordHash })
+          .where(eq(users.id, existing.id));
+      } else {
+        // Owner account: nothing to set up — they sign in as usual.
+        linkedExisting = true;
+      }
+    } else {
+      const passwordHash = await bcrypt.hash(password, 10);
       const [inserted] = await db
         .insert(users)
         .values({
@@ -85,19 +111,15 @@ export async function POST(request: Request) {
       accountId = inserted.id;
     }
 
-    if (existing) {
-      await db
-        .update(users)
-        .set({ passwordHash })
-        .where(eq(users.id, existing.id));
-    }
-
     await db
       .update(tenants)
       .set({ accountId })
       .where(eq(tenants.id, result.tenantId));
 
-    return NextResponse.json({ email: result.email }, { status: 201 });
+    return NextResponse.json(
+      { email: result.email, linkedExisting },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("Tenant setup error:", error);
     return NextResponse.json(

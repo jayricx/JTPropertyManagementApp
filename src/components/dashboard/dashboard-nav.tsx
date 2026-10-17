@@ -9,6 +9,7 @@ import {
   Building2,
   ChartColumnBig,
   FileText,
+  Home,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -35,9 +36,11 @@ const navItems = [
 
 function NavLinks({
   pathname,
+  hasPortal = false,
   onNavigate,
 }: {
   pathname: string;
+  hasPortal?: boolean;
   onNavigate?: () => void;
 }) {
   const isItemActive = (href: string) =>
@@ -61,6 +64,22 @@ function NavLinks({
           {item.label}
         </Link>
       ))}
+      {/* Owners who also rent from another owner can jump to the portal. */}
+      {hasPortal && (
+        <Link
+          href="/portal"
+          onClick={onNavigate}
+          className={cn(
+            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            isItemActive("/portal")
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_3px_0_0_0_var(--sidebar-primary)]"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <Home className="h-4 w-4" />
+          Tenant portal
+        </Link>
+      )}
     </>
   );
 }
@@ -120,7 +139,7 @@ function NavBrand({
   );
 }
 
-export function DashboardNav() {
+export function DashboardNav({ hasPortal = false }: { hasPortal?: boolean }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -140,7 +159,7 @@ export function DashboardNav() {
           <NavBrand />
         </div>
         <nav className="flex-1 space-y-1 p-4">
-          <NavLinks pathname={pathname} />
+          <NavLinks pathname={pathname} hasPortal={hasPortal} />
         </nav>
         <SidebarFooter />
       </aside>
@@ -193,6 +212,7 @@ export function DashboardNav() {
             <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-4">
               <NavLinks
                 pathname={pathname}
+                hasPortal={hasPortal}
                 onNavigate={() => setMobileOpen(false)}
               />
             </nav>

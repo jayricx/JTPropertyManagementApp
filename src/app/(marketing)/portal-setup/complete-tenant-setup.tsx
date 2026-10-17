@@ -33,6 +33,7 @@ export function CompleteTenantSetup({ token }: CompleteTenantSetupProps) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [linkedExisting, setLinkedExisting] = useState(false);
   const [pending, startTransition] = useTransition();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -58,6 +59,13 @@ export function CompleteTenantSetup({ token }: CompleteTenantSetupProps) {
         setError(result.error ?? "That link is invalid or has expired.");
         return;
       }
+      // The address already belongs to an account (e.g. an owner who rents
+      // from another owner). The invite is linked to it, but their password is
+      // theirs — send them to sign in rather than signing in as them here.
+      if (result.linkedExisting) {
+        setLinkedExisting(true);
+        return;
+      }
       const signedIn = await signIn("credentials", {
         email: result.email,
         password,
@@ -72,14 +80,36 @@ export function CompleteTenantSetup({ token }: CompleteTenantSetupProps) {
     });
   }
 
+  if (linkedExisting) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-4 py-12">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Invite linked</CardTitle>
+            <CardDescription>
+              This tenant portal is now linked to your existing account. Sign in
+              with the password you already use to see it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" render={<Link href="/login" />}>
+              Sign in to continue
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 items-center justify-center px-4 py-12">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Set up your portal</CardTitle>
           <CardDescription>
-            Choose a password to finish setting up your tenant portal. It works
-            once — after that, sign in with your email and this password.
+            Choose a password to finish setting up your tenant portal. If your
+            email already has a JT account, the invite is simply linked to it
+            and you keep your usual password.
           </CardDescription>
         </CardHeader>
         <CardContent>

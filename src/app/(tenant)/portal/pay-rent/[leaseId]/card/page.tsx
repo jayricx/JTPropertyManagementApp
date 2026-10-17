@@ -34,7 +34,7 @@ export default async function CardPayPage({
   const { leaseId } = await params;
   const { status } = await searchParams;
   const session = await auth();
-  if (!session?.user || session.user.role !== "tenant") redirect("/login");
+  if (!session?.user) redirect("/login");
 
   const lease = await loadPayableLease(session.user.id, leaseId);
   if (!lease) redirect("/portal");

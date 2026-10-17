@@ -3,10 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { LogOutIcon } from "lucide-react";
+import { LayoutDashboard, LogOutIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-export function PortalHeader() {
+/**
+ * `showDashboardLink` is set for accounts that are also owners, so they can
+ * hop back to their landlord dashboard from the portal.
+ */
+export function PortalHeader({
+  showDashboardLink = false,
+}: {
+  showDashboardLink?: boolean;
+}) {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div
@@ -24,6 +32,15 @@ export function PortalHeader() {
           </span>
         </Link>
         <div className="flex shrink-0 items-center gap-1">
+          {showDashboardLink && (
+            <Link
+              href="/dashboard"
+              className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </Link>
+          )}
           <ThemeToggle />
           <button
             type="button"

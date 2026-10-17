@@ -35,13 +35,12 @@ export async function signLeaseAsTenantAction(
 ): Promise<ActionState> {
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
-  if (session.user.role !== "tenant") {
-    return { error: "Only tenant accounts can sign here." };
-  }
 
   const leaseId = String(formData.get("leaseId") ?? "");
   if (!isUuid(leaseId)) return { error: "That lease could not be found." };
 
+  // Access follows the linked profile, not the account role — an owner who
+  // rents from another owner signs here as their own tenant.
   const [tenant] = await db
     .select({ id: tenants.id })
     .from(tenants)
@@ -94,13 +93,9 @@ export async function createTenantRequestAction(
 ): Promise<ActionState> {
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
-  // Server actions are callable by any signed-in user — enforce the role
-  // here too, not just in the portal layout.
-  if (session.user.role !== "tenant") {
-    return { error: "Only tenant accounts can report issues." };
-  }
 
-  // The tenant profile is whatever roster entry links to this account.
+  // The profile lookup below is the real gate: only a linked tenant can file
+  // an issue, whatever the account's primary role is.
   const [tenant] = await db
     .select({ id: tenants.id })
     .from(tenants)
@@ -239,7 +234,7 @@ export async function confirmGcashPaymentAction(
   formData: FormData,
 ): Promise<ActionState> {
   const session = await auth();
-  if (!session?.user || session.user.role !== "tenant") redirect("/login");
+  if (!session?.user) redirect("/login");
 
   const leaseId = String(formData.get("leaseId") ?? "");
   const parsed = z
@@ -299,7 +294,7 @@ export async function startCardCheckoutAction(
   formData: FormData,
 ): Promise<CardCheckoutState> {
   const session = await auth();
-  if (!session?.user || session.user.role !== "tenant") redirect("/login");
+  if (!session?.user) redirect("/login");
   if (!paymongoEnabled()) {
     return { error: "Card payments aren't available right now." };
   }

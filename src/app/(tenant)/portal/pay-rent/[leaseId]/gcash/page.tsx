@@ -26,7 +26,7 @@ export default async function GcashPayPage({
 }) {
   const { leaseId } = await params;
   const session = await auth();
-  if (!session?.user || session.user.role !== "tenant") redirect("/login");
+  if (!session?.user) redirect("/login");
 
   const lease = await loadPayableLease(session.user.id, leaseId);
   if (!lease) redirect("/portal");

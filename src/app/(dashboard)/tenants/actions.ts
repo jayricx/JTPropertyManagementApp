@@ -121,9 +121,11 @@ export async function deleteTenantAction(
 
 // ---------------------------------------------------------------------------
 // Tenant portal access — the landlord emails an invite (or revokes one) for a
-// roster entry; the tenant's account is only created when they complete that
-// link at /api/auth/complete-portal-setup, with role "tenant", so it can never
-// see the dashboard (the layout bounces it).
+// roster entry; the invitee completes the link at
+// /api/auth/complete-portal-setup. A fresh account is created for a tenant, or
+// an existing account (an owner who rents from another owner) is linked as-is
+// without touching its password. Access then follows that link, not the
+// account's role, so an owner can use both the dashboard and the portal.
 // ---------------------------------------------------------------------------
 
 export async function sendPortalInviteAction(
@@ -154,13 +156,26 @@ export async function sendPortalInviteAction(
     return { error: "Add an email address to the tenant first." };
   }
 
-  const clash = await db
+  // An existing account is fine — an owner can rent from another owner, so the
+  // invite simply attaches this roster entry to the account they already use.
+  // Only refuse when that account already carries a different landlord's
+  // tenant profile, since a login can hold one tenancy at a time.
+  const [existing] = await db
     .select({ id: users.id })
     .from(users)
     .where(eq(sql`lower(${users.email})`, email))
     .limit(1);
-  if (clash.length) {
-    return { error: "An account with that email already exists." };
+  if (existing) {
+    const [alreadyLinked] = await db
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.accountId, existing.id))
+      .limit(1);
+    if (alreadyLinked) {
+      return {
+        error: `${email} is already a tenant on another landlord's roster.`,
+      };
+    }
   }
 
   const started = await createTenantInvitation(tenant.id);
@@ -219,13 +234,27 @@ export async function revokePortalAccessAction(
 
   // Maintenance requests the tenant filed reference their user row and would
   // cascade away with the account — reassign them to the landlord first.
+  //
+  // Only a tenant-only account is deleted on revoke: it exists purely to serve
+  // this portal, so removing it fully revokes the login. An owner who also
+  // rents here keeps their account (it owns their own properties) — revoking
+  // just unlinks this roster entry.
   if (tenant.accountId) {
-    await db
-      .update(maintenanceRequests)
-      .set({ userId: session.user.id })
-      .where(eq(maintenanceRequests.userId, tenant.accountId));
+    const [account] = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, tenant.accountId))
+      .limit(1);
 
-    await db.delete(users).where(eq(users.id, tenant.accountId));
+    if (account?.role === "tenant") {
+      await db
+        .update(maintenanceRequests)
+        .set({ userId: session.user.id })
+        .where(eq(maintenanceRequests.userId, tenant.accountId));
+
+      await db.delete(users).where(eq(users.id, tenant.accountId));
+    }
+
     await db
       .update(tenants)
       .set({ accountId: null })

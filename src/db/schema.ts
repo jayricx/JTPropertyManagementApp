@@ -204,10 +204,10 @@ export const tenants = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // Portal login: links this roster entry to a tenant-role user account.
-    // Deleting the account keeps the roster row (set null). One account per
-    // tenant is enforced by the invite flow — the completion route creates a
-    // fresh user once the tenant picks a password from the emailed link.
+    // Portal login: links this roster entry to a user account. The invite
+    // flow keeps one tenant profile per account, but the account need not be
+    // tenant-role — an owner who rents from another owner is linked too.
+    // Deleting an account keeps the roster row (set null).
     accountId: uuid("account_id").references(() => users.id, {
       onDelete: "set null",
     }),
