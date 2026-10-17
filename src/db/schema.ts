@@ -197,6 +197,63 @@ export const units = pgTable(
   (t) => [index("units_property_id_idx").on(t.propertyId)],
 );
 
+// ---------------------------------------------------------------------------
+// Utility meters — electricity and water sub-meters on a unit. A landlord
+// reads each meter every month and bills the tenant for consumption × rate.
+// `rate` is ₱ per consumption unit (kWh for electric, m³ for water); each
+// reading snapshots the rate so changing it never rewrites past bills.
+// ---------------------------------------------------------------------------
+
+export const meterTypeEnum = pgEnum("meter_type", ["electric", "water"]);
+
+export const meters = pgTable(
+  "meters",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    unitId: uuid("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "cascade" }),
+    type: meterTypeEnum("type").notNull(),
+    label: varchar("label", { length: 100 }),
+    /** ₱ per consumption unit (kWh or m³), 4 decimals for exact Meralco rates. */
+    rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("meters_unit_type_key").on(t.unitId, t.type),
+    index("meters_unit_id_idx").on(t.unitId),
+  ],
+);
+
+export const meterReadings = pgTable(
+  "meter_readings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    meterId: uuid("meter_id")
+      .notNull()
+      .references(() => meters.id, { onDelete: "cascade" }),
+    /** Billing month, "YYYY-MM". One reading per meter per month. */
+    periodMonth: varchar("period_month", { length: 7 }).notNull(),
+    readingDate: date("reading_date", { mode: "date" }).notNull(),
+    previousReading: numeric("previous_reading", { precision: 14, scale: 2 }).notNull(),
+    currentReading: numeric("current_reading", { precision: 14, scale: 2 }).notNull(),
+    /** current − previous, snapshotted at entry. */
+    consumption: numeric("consumption", { precision: 14, scale: 2 }).notNull(),
+    /** Rate at entry time, snapshotted so history never shifts. */
+    rate: numeric("rate", { precision: 12, scale: 4 }).notNull(),
+    /** consumption × rate, snapshotted. */
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("meter_readings_meter_period_key").on(t.meterId, t.periodMonth),
+    index("meter_readings_meter_id_idx").on(t.meterId),
+  ],
+);
+
 export const tenants = pgTable(
   "tenants",
   {
@@ -331,6 +388,45 @@ export const payments = pgTable(
   (t) => [
     index("payments_user_id_idx").on(t.userId),
     index("payments_lease_id_idx").on(t.leaseId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Charges — non-rent, non-meter amounts billed to a lease for a month:
+// association dues, penalties, or a manual electricity/water share (for
+// landlords who split the utility bill by proportion instead of sub-metering).
+// Rent and sub-metered utilities are derived on the fly; these are the manual
+// additions that complete a tenant's monthly statement.
+// ---------------------------------------------------------------------------
+
+export const chargeTypeEnum = pgEnum("charge_type", [
+  "electricity",
+  "water",
+  "dues",
+  "penalty",
+  "other",
+]);
+
+export const charges = pgTable(
+  "charges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leaseId: uuid("lease_id")
+      .notNull()
+      .references(() => leases.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Billing month, "YYYY-MM". */
+    periodMonth: varchar("period_month", { length: 7 }).notNull(),
+    type: chargeTypeEnum("type").notNull(),
+    description: varchar("description", { length: 255 }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("charges_lease_id_idx").on(t.leaseId),
+    index("charges_user_id_idx").on(t.userId),
   ],
 );
 

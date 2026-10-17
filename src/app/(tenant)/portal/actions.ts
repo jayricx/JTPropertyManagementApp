@@ -7,7 +7,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, maintenanceRequests, paymentCheckouts, payments, properties, tenants, units } from "@/db/schema";
+import { leases, maintenanceRequests, paymentCheckouts, payments, tenants, units } from "@/db/schema";
 import { documents } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/lib/attachments";
 import { pesosToCentavos } from "@/lib/payments/money";
 import { createCheckoutSession, paymongoEnabled } from "@/lib/payments/paymongo";
+import { loadPayableLease } from "@/lib/portal-lease";
 import { gcashPaymentNote, recordRentPayment } from "@/lib/rent-payment";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
@@ -194,40 +195,15 @@ export async function createTenantRequestAction(
 // ---------------------------------------------------------------------------
 
 /**
- * The signed-in tenant's own *active* lease for `leaseId`, or null. Everything
- * a payment needs (rent, property, unit) is derived server-side from this row.
- */
-async function loadPayableLease(userId: string, leaseId: string) {
-  if (!isUuid(leaseId)) return null;
-  const [tenant] = await db
-    .select({ id: tenants.id, email: tenants.email })
-    .from(tenants)
-    .where(eq(tenants.accountId, userId))
-    .limit(1);
-  if (!tenant) return null;
-  const [lease] = await db
-    .select({
-      id: leases.id,
-      status: leases.status,
-      rentAmount: leases.rentAmount,
-      unitName: units.name,
-      propertyName: properties.name,
-    })
-    .from(leases)
-    .innerJoin(units, eq(leases.unitId, units.id))
-    .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(and(eq(leases.id, leaseId), eq(leases.tenantId, tenant.id)))
-    .limit(1);
-  if (!lease || lease.status !== "active") return null;
-  return { tenant, lease };
-}
-
-/**
  * "Pay rent" via GCash — the tenant sends rent from their own GCash app to
  * the landlord's wallet, then submits the reference number from the
  * confirmation screen here. The payment is recorded with the reference in
  * its notes; the landlord verifies it against their GCash history. Repeated
  * submissions of the same reference can't create a second payment.
+ *
+ * The amount is the lease's outstanding statement balance at submit time —
+ * rent plus any sub-metered utilities and manual charges not yet covered — so
+ * a utility reading billed after last month's rent is still collected.
  */
 export async function confirmGcashPaymentAction(
   _prev: ActionState,
@@ -254,6 +230,9 @@ export async function confirmGcashPaymentAction(
 
   const found = await loadPayableLease(session.user.id, leaseId);
   if (!found) return { error: "Lease not found." };
+  if (found.amountDue <= 0) {
+    return { error: "You have no outstanding balance to pay." };
+  }
 
   const notes = gcashPaymentNote(parsed.data.reference);
   const [existing] = await db
@@ -265,7 +244,7 @@ export async function confirmGcashPaymentAction(
     const ok = await recordRentPayment({
       leaseId,
       userId: session.user.id,
-      amount: Number(found.lease.rentAmount),
+      amount: found.amountDue,
       method: "gcash",
       notes,
     });
@@ -302,11 +281,10 @@ export async function startCardCheckoutAction(
   const leaseId = String(formData.get("leaseId") ?? "");
   const found = await loadPayableLease(session.user.id, leaseId);
   if (!found) return { error: "Lease not found." };
-  const { lease } = found;
 
-  const amountCentavos = pesosToCentavos(lease.rentAmount);
+  const amountCentavos = pesosToCentavos(found.amountDue);
   if (amountCentavos <= 0) {
-    return { error: "This lease has no rent amount to charge." };
+    return { error: "You have no outstanding balance to pay." };
   }
 
   const referenceNumber = randomUUID();
@@ -317,8 +295,8 @@ export async function startCardCheckoutAction(
   try {
     checkout = await createCheckoutSession({
       amountCentavos,
-      lineItemName: `Rent — ${lease.propertyName} Unit ${lease.unitName}`,
-      description: `Rent for ${lease.propertyName}, Unit ${lease.unitName}`,
+      lineItemName: `Rent & utilities — ${found.propertyName} Unit ${found.unitName}`,
+      description: `Statement balance for ${found.propertyName}, Unit ${found.unitName}`,
       referenceNumber,
       successUrl: `${returnPath}?status=success`,
       cancelUrl: `${returnPath}?status=cancel`,

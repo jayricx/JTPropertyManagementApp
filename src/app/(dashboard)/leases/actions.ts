@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { documents, leaseNotes, leases, tenants, units } from "@/db/schema";
+import { documents, leaseNotes, leases, tenants, units, charges } from "@/db/schema";
 import { canManageLease, canManageUnit } from "@/lib/access";
 import {
   sanitizeFileName,
@@ -15,6 +15,7 @@ import { awardXp } from "@/lib/gamification";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
 import {
+  chargeSchema,
   leaseNoteSchema,
   leaseSchema,
   leaseSignatureSchema,
@@ -426,4 +427,62 @@ export async function deleteLeaseAction(
 
   revalidateLeasePaths();
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Charges — non-rent amounts billed to a lease (dues, penalties, a manual
+// utility share). They complete the tenant's monthly statement; rent and
+// sub-metered utilities are derived, so only the manual additions live here.
+// ---------------------------------------------------------------------------
+
+export async function createChargeAction(
+  _prev: LeaseRecordState,
+  formData: FormData,
+): Promise<LeaseRecordState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const parsed = chargeSchema.safeParse(toFormDataRecord(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid charge." };
+  }
+  const denied = await assertCanManageLease(session.user.id, parsed.data.leaseId);
+  if (denied) return { error: denied };
+
+  await db.insert(charges).values({
+    leaseId: parsed.data.leaseId,
+    userId: session.user.id,
+    periodMonth: parsed.data.periodMonth,
+    type: parsed.data.type,
+    description: parsed.data.description,
+    amount: String(parsed.data.amount ?? 0),
+  });
+
+  revalidatePath(`/leases/${parsed.data.leaseId}/edit`);
+  revalidatePath("/leases");
+  return { ok: true };
+}
+
+export async function deleteChargeAction(
+  _prev: LeaseRecordState,
+  formData: FormData,
+): Promise<LeaseRecordState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const chargeId = String(formData.get("chargeId") ?? "");
+  const leaseId = String(formData.get("leaseId") ?? "");
+  if (!isUuid(chargeId) || !isUuid(leaseId)) {
+    return { error: "That charge could not be found." };
+  }
+  const denied = await assertCanManageLease(session.user.id, leaseId);
+  if (denied) return { error: denied };
+
+  await db
+    .delete(charges)
+    .where(and(eq(charges.id, chargeId), eq(charges.leaseId, leaseId)));
+
+  revalidatePath(`/leases/${leaseId}/edit`);
+  revalidatePath("/leases");
+  return { ok: true };
 }

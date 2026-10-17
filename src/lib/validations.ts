@@ -234,6 +234,77 @@ export const leaseNoteSchema = z.object({
     .max(2000, "Notes are limited to 2000 characters."),
 });
 
+// ---------------------------------------------------------------------------
+// Utilities (meters & readings) and lease charges — the statement of account
+// ---------------------------------------------------------------------------
+
+/** A billing month as "YYYY-MM" (matches `<input type="month">`). */
+export const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+export const meterTypes = ["electric", "water"] as const;
+export type MeterType = (typeof meterTypes)[number];
+
+export const meterTypeLabels: Record<MeterType, string> = {
+  electric: "Electric",
+  water: "Water",
+};
+
+/** The consumption unit each meter type is billed in (₱ per unit). */
+export const meterConsumptionUnits: Record<MeterType, string> = {
+  electric: "kWh",
+  water: "m³",
+};
+
+export const meterSchema = z
+  .object({
+    unitId: z.uuid("Please select a unit"),
+    type: z.enum(meterTypes),
+    label: optionalText(100),
+    rate: optionalNumber(0, 100_000),
+  })
+  .refine((v) => v.rate !== undefined, {
+    message: "Rate is required",
+    path: ["rate"],
+  });
+export type MeterFormValues = z.input<typeof meterSchema>;
+export type MeterFormParsed = z.output<typeof meterSchema>;
+
+export const chargeTypes = [
+  "electricity",
+  "water",
+  "dues",
+  "penalty",
+  "other",
+] as const;
+export type ChargeType = (typeof chargeTypes)[number];
+
+export const chargeTypeLabels: Record<ChargeType, string> = {
+  electricity: "Electricity",
+  water: "Water",
+  dues: "Association dues",
+  penalty: "Penalty",
+  other: "Other",
+};
+
+/** Utility charges fold into the statement's utility subtotal. */
+export const utilityChargeTypes: ChargeType[] = ["electricity", "water"];
+
+export const chargeSchema = z
+  .object({
+    leaseId: z.uuid("Please select a lease"),
+    periodMonth: z.string().regex(monthPattern, "Pick a month"),
+    type: z.enum(chargeTypes),
+    description: optionalText(255),
+    amount: optionalNumber(0, 1_000_000),
+  })
+  .refine((v) => v.amount !== undefined, {
+    message: "Amount is required",
+    path: ["amount"],
+  });
+export type ChargeFormValues = z.input<typeof chargeSchema>;
+export type ChargeFormParsed = z.output<typeof chargeSchema>;
+
+
 export const paymentMethods = [
   "cash",
   "check",

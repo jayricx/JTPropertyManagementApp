@@ -94,9 +94,11 @@ export default async function CardPayPage({
         <CardContent className="space-y-4">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-xs text-muted-foreground">Amount</dt>
+              <dt className="text-xs text-muted-foreground">
+                Amount due (rent + utilities + charges)
+              </dt>
               <dd className="text-lg font-semibold">
-                {formatCurrency(lease.rentAmount)}
+                {formatCurrency(lease.amountDue)}
               </dd>
             </div>
             <div>
@@ -114,9 +116,15 @@ export default async function CardPayPage({
             </p>
           )}
 
-          <div className="border-t pt-4">
-            <CardCheckoutButton leaseId={leaseId} />
-          </div>
+          {lease.amountDue > 0 ? (
+            <div className="border-t pt-4">
+              <CardCheckoutButton leaseId={leaseId} />
+            </div>
+          ) : (
+            <p className="border-t pt-4 text-sm text-muted-foreground">
+              You have no outstanding balance — nothing to pay right now.
+            </p>
+          )}
 
           <p className="text-xs text-muted-foreground">
             Prefer to avoid card fees? You can also{" "}

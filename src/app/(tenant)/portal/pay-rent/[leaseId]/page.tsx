@@ -54,9 +54,11 @@ export default async function PayRentPage({
         <CardContent className="space-y-5">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-xs text-muted-foreground">Amount due</dt>
+              <dt className="text-xs text-muted-foreground">
+                Amount due (rent + utilities + charges)
+              </dt>
               <dd className="text-lg font-semibold">
-                {formatCurrency(lease.rentAmount)}
+                {formatCurrency(lease.amountDue)}
               </dd>
             </div>
             <div>
@@ -68,17 +70,24 @@ export default async function PayRentPage({
             </div>
           </dl>
 
-          <div className="grid gap-3">
-            <Button render={<Link href={`/portal/pay-rent/${leaseId}/gcash`} />}>
-              Pay with GCash
-            </Button>
-            <Button
-              variant="outline"
-              render={<Link href={`/portal/pay-rent/${leaseId}/card`} />}
-            >
-              Pay with card
-            </Button>
-          </div>
+          {lease.amountDue <= 0 ? (
+            <p className="text-sm text-muted-foreground">
+              You&apos;re all paid up — there&apos;s no balance to settle right
+              now.
+            </p>
+          ) : (
+            <div className="grid gap-3">
+              <Button render={<Link href={`/portal/pay-rent/${leaseId}/gcash`} />}>
+                Pay with GCash
+              </Button>
+              <Button
+                variant="outline"
+                render={<Link href={`/portal/pay-rent/${leaseId}/card`} />}
+              >
+                Pay with card
+              </Button>
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <Button variant="ghost" render={<Link href="/portal" />}>

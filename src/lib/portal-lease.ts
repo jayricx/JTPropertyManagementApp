@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { leases, properties, tenants, units, users } from "@/db/schema";
+import { getLeaseStatement, type LeaseStatement } from "@/lib/statements";
 import { isUuid } from "@/lib/utils";
 
 export interface PayableLease {
@@ -14,14 +15,28 @@ export interface PayableLease {
   /** The landlord's GCash wallet, shown on the GCash method page. */
   gcashNumber: string | null;
   gcashName: string | null;
+  /** The lease's full statement of account (rent + utilities + charges). */
+  statement: LeaseStatement;
+  /**
+   * What the tenant should settle now: everything still outstanding
+   * (`statement.outstanding`, floored at zero). Utilities are read in arrears,
+   * so this naturally collects last month's reading together with this
+   * month's rent instead of stranding it.
+   */
+  amountDue: number;
 }
 
 /**
  * The signed-in tenant account's own *active* lease for `leaseId`, or null.
  * Guards every portal pay-rent page: a tenant may only ever pay a lease that
  * belongs to them, and only while it is active. Everything a payment needs
- * (rent, property, unit, and the landlord's GCash details) is derived
- * server-side from this row — nothing comes from the client.
+ * (rent, utilities, property, unit, and the landlord's GCash details) is
+ * derived server-side from this row — nothing comes from the client.
+ *
+ * The amount to collect is everything still outstanding on the statement —
+ * rent, sub-metered utilities, and manual charges, less payments recorded —
+ * so a tenant settles any arrears in one payment rather than stranding a
+ * utility reading that was billed after the rent was already paid.
  */
 export async function loadPayableLease(
   accountId: string,
@@ -56,6 +71,9 @@ export async function loadPayableLease(
     .limit(1);
   if (!lease || lease.status !== "active") return null;
 
+  const statement = await getLeaseStatement(lease.id);
+  if (!statement) return null;
+
   return {
     id: lease.id,
     startDate: lease.startDate,
@@ -65,5 +83,7 @@ export async function loadPayableLease(
     propertyName: lease.propertyName,
     gcashNumber: lease.gcashNumber,
     gcashName: lease.gcashName,
+    statement,
+    amountDue: Math.max(statement.outstanding, 0),
   };
 }

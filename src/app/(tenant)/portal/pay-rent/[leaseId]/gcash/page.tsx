@@ -32,13 +32,15 @@ export default async function GcashPayPage({
   if (!lease) redirect("/portal");
 
   const hasGcashDetails = Boolean(lease.gcashNumber);
+  const amountDue = lease.amountDue;
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Pay rent with GCash</h1>
         <p className="text-muted-foreground">
-          Send rent from your GCash app, then submit the reference number below.
+          Send your balance from your GCash app, then submit the reference
+          number below.
         </p>
       </div>
 
@@ -52,9 +54,11 @@ export default async function GcashPayPage({
         <CardContent className="space-y-4">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-xs text-muted-foreground">Amount</dt>
+              <dt className="text-xs text-muted-foreground">
+                Amount due (rent + utilities + charges)
+              </dt>
               <dd className="text-lg font-semibold">
-                {formatCurrency(lease.rentAmount)}
+                {formatCurrency(amountDue)}
               </dd>
             </div>
             <div>
@@ -87,7 +91,7 @@ export default async function GcashPayPage({
                 </li>
                 <li>
                   Enter the number above and exactly{" "}
-                  {formatCurrency(lease.rentAmount)}.
+                  {formatCurrency(amountDue)}.
                 </li>
                 <li>
                   On the confirmation screen, copy the{" "}
@@ -103,9 +107,15 @@ export default async function GcashPayPage({
             </div>
           )}
 
-          <div className="border-t pt-4">
-            <GcashReferenceForm leaseId={leaseId} />
-          </div>
+          {amountDue > 0 ? (
+            <div className="border-t pt-4">
+              <GcashReferenceForm leaseId={leaseId} />
+            </div>
+          ) : (
+            <p className="border-t pt-4 text-sm text-muted-foreground">
+              You have no outstanding balance — nothing to pay right now.
+            </p>
+          )}
 
           <Button
             variant="ghost"

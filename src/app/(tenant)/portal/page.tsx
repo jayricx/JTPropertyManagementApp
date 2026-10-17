@@ -36,7 +36,9 @@ import {
   type RequestMediaItem,
 } from "@/components/maintenance/request-media";
 import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
+import { StatementTable } from "@/components/leases/statement-table";
 import { signLeaseAsTenantAction } from "@/app/(tenant)/portal/actions";
+import { getLeaseStatement } from "@/lib/statements";
 import { getLeaseSignatures } from "@/lib/signatures";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -207,6 +209,11 @@ export default async function TenantPortalPage({
       ])
     : [null, "Your landlord"];
 
+  // The active lease's statement of account — rent, utilities, charges, and
+  // payments, the same numbers the landlord sees.
+  const statement = active ? await getLeaseStatement(active.id) : null;
+  const amountDue = statement ? Math.max(statement.outstanding, 0) : 0;
+
   return (
     <div className="space-y-6">
       {/* Payment result banners — from the GCash reference submission. */}
@@ -372,20 +379,32 @@ export default async function TenantPortalPage({
           <CardTitle>Pay rent</CardTitle>
           <CardDescription>
             {active
-              ? `${formatCurrency(active.rentAmount)} due monthly`
+              ? amountDue > 0
+                ? `${formatCurrency(amountDue)} outstanding`
+                : "You're all paid up"
               : "No active lease"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           {active ? (
             <>
-              <Button render={<Link href={`/portal/pay-rent/${active.id}`} />}>
-                <SmartphoneIcon />
-                Pay {formatCurrency(active.rentAmount)} with GCash
-              </Button>
+              {amountDue > 0 ? (
+                <Button
+                  render={<Link href={`/portal/pay-rent/${active.id}`} />}
+                >
+                  <SmartphoneIcon />
+                  Pay {formatCurrency(amountDue)} with GCash
+                </Button>
+              ) : (
+                <p>
+                  Nothing is due right now — new rent and utility charges will
+                  appear here.
+                </p>
+              )}
               <p>
-                Send rent from your GCash app to your landlord&apos;s wallet,
-                then submit the reference number to record your payment.
+                Rent plus any electricity and water you&apos;ve used make up
+                your balance; pay it from your GCash app, then submit the
+                reference number to record the payment.
               </p>
               {lastPayment && (
                 <p>
@@ -402,6 +421,11 @@ export default async function TenantPortalPage({
           )}
         </CardContent>
       </Card>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Statement of account                                             */}
+      {/* ---------------------------------------------------------------- */}
+      {statement && <StatementTable statement={statement} />}
 
       {/* ---------------------------------------------------------------- */}
       {/* Payment history                                                  */}

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { PencilIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import {
   leases,
+  meterReadings,
+  meters,
   properties,
   propertyCollaborators,
   tenants,
@@ -33,9 +35,13 @@ import { CoOwnersCard } from "@/components/properties/co-owners-card";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { UnitFormDialog } from "@/components/properties/unit-form-dialog";
 import { UnitRowActions } from "@/components/properties/unit-row-actions";
+import { MeterFormDialog } from "@/components/properties/meter-form-dialog";
+import { MeterRowActions } from "@/components/properties/meter-row-actions";
 import { getPropertyAccess } from "@/lib/access";
 import { formatCurrency, isUuid } from "@/lib/utils";
 import {
+  meterConsumptionUnits,
+  meterTypeLabels,
   propertyTypeLabels,
   unitStatusLabels,
   type UnitFormValues,
@@ -119,6 +125,31 @@ export default async function PropertyDetailPage({
   const tenantByUnit = new Map(
     activeLeaseRows.map((r) => [r.unitId, r.tenantName]),
   );
+
+  const unitIds = unitRows.map((u) => u.id);
+  const meterRows = unitIds.length
+    ? await db
+        .select({
+          id: meters.id,
+          unitId: meters.unitId,
+          type: meters.type,
+          label: meters.label,
+          rate: meters.rate,
+        })
+        .from(meters)
+        .where(inArray(meters.unitId, unitIds))
+        .orderBy(asc(meters.type))
+    : [];
+  const meterIds = meterRows.map((m) => m.id);
+  const meterReadingRows = meterIds.length
+    ? await db
+        .select({ meterId: meterReadings.meterId })
+        .from(meterReadings)
+        .where(inArray(meterReadings.meterId, meterIds))
+    : [];
+  const metersWithReadings = new Set(meterReadingRows.map((r) => r.meterId));
+  const unitNameById = new Map(unitRows.map((u) => [u.id, u.name]));
+  const unitOptions = unitRows.map((u) => ({ id: u.id, label: u.name }));
 
   const occupied = unitRows.filter((u) => u.status === "occupied").length;
   const occupancyRate =
@@ -256,6 +287,94 @@ export default async function PropertyDetailPage({
                         <UnitRowActions
                           propertyId={property.id}
                           unit={toFormValues(u)}
+                        />
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle>Utility meters</CardTitle>
+            <CardDescription>
+              {meterRows.length
+                ? `${meterRows.length} meter${meterRows.length === 1 ? "" : "s"} · read monthly and billed on the tenant's statement`
+                : "Sub-meter electricity and water so tenants pay for what they use"}
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              render={
+                <Link href={`/properties/${property.id}/readings`}>
+                  Readings
+                </Link>
+              }
+            />
+            {canManage && unitOptions.length > 0 && (
+              <MeterFormDialog
+                propertyId={property.id}
+                unitOptions={unitOptions}
+              />
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {unitRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Add a unit before setting up its meters.
+            </p>
+          ) : meterRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No meters yet. Add an electric or water meter to a unit to start
+              billing utilities.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Meter</TableHead>
+                  <TableHead>Label</TableHead>
+                  <TableHead className="text-right">Rate</TableHead>
+                  {canManage && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {meterRows.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-medium">
+                      {unitNameById.get(m.unitId) ?? "—"}
+                    </TableCell>
+                    <TableCell>{meterTypeLabels[m.type]}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {m.label ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(m.rate, { maximumFractionDigits: 4 })}/
+                      {meterConsumptionUnits[m.type]}
+                    </TableCell>
+                    {canManage && (
+                      <TableCell>
+                        <MeterRowActions
+                          propertyId={property.id}
+                          unitOptions={unitOptions}
+                          meter={{
+                            id: m.id,
+                            unitId: m.unitId,
+                            type: m.type,
+                            label: m.label,
+                            rate: Number(m.rate),
+                            hasReadings: metersWithReadings.has(m.id),
+                          }}
                         />
                       </TableCell>
                     )}

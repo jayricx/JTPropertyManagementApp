@@ -16,10 +16,12 @@ import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form"
 import { LeaseAttachmentsCard } from "@/components/leases/lease-attachments-card";
 import { LeaseNotesCard } from "@/components/leases/lease-notes-card";
 import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
+import { StatementTable } from "@/components/leases/statement-table";
 import { signLeaseAction } from "@/app/(dashboard)/leases/actions";
 import { accessiblePropertyIds, canManageUnit } from "@/lib/access";
+import { getLeaseStatement } from "@/lib/statements";
 import { getLeaseSignatures } from "@/lib/signatures";
-import { isUuid } from "@/lib/utils";
+import { currentMonthKey, isUuid, listMonths, shiftMonth } from "@/lib/utils";
 import type { LeaseFormValues } from "@/lib/validations";
 
 interface EditLeasePageProps {
@@ -69,6 +71,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
     leaseTenantRows,
     noteRows,
     attachmentRows,
+    statement,
   ] = await Promise.all([
     db
       .select({
@@ -131,6 +134,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         .innerJoin(users, eq(documents.userId, users.id))
         .where(eq(documents.leaseId, lease.id))
         .orderBy(desc(documents.createdAt)),
+      getLeaseStatement(lease.id),
     ]);
 
   const tenantOptions = tenantRows.map((t) => ({
@@ -157,6 +161,13 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
     notes: lease.notes ?? "",
   };
 
+  // Charge months: the past year plus the coming month, newest first.
+  const nowMonth = currentMonthKey();
+  const chargeMonthOptions = listMonths(
+    shiftMonth(nowMonth, -11),
+    shiftMonth(nowMonth, 1),
+  ).reverse();
+
   return (
     <div className="space-y-6">
       <Link
@@ -170,6 +181,9 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         unitOptions={unitOptions}
         tenantOptions={tenantOptions}
       />
+      {statement && (
+        <StatementTable statement={statement} canManage monthOptions={chargeMonthOptions} />
+      )}
       <LeaseSignaturesCard
         leaseId={lease.id}
         viewer="landlord"
