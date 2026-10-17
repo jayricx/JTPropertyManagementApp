@@ -40,7 +40,8 @@ export default async function GcashPayPage({
         <h1 className="text-2xl font-bold tracking-tight">Pay rent with GCash</h1>
         <p className="text-muted-foreground">
           Send your balance from your GCash app, then submit the reference
-          number below.
+          number below. Your landlord verifies it against their GCash history
+          before it counts toward your balance.
         </p>
       </div>
 
@@ -97,7 +98,10 @@ export default async function GcashPayPage({
                   On the confirmation screen, copy the{" "}
                   <strong>reference number</strong>.
                 </li>
-                <li>Submit it below to record your payment.</li>
+                <li>
+                  Submit it below — your landlord verifies it before the
+                  payment counts.
+                </li>
               </ol>
             </>
           ) : (

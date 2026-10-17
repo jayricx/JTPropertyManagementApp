@@ -18,7 +18,11 @@ import {
 import { pesosToCentavos } from "@/lib/payments/money";
 import { createCheckoutSession, paymongoEnabled } from "@/lib/payments/paymongo";
 import { loadPayableLease } from "@/lib/portal-lease";
-import { gcashPaymentNote, recordRentPayment } from "@/lib/rent-payment";
+import {
+  gcashPaymentNote,
+  recordRentPayment,
+  todayPaymentDate,
+} from "@/lib/rent-payment";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
 import { leaseSignatureSchema, tenantRequestSchema } from "@/lib/validations";
@@ -197,9 +201,12 @@ export async function createTenantRequestAction(
 /**
  * "Pay rent" via GCash — the tenant sends rent from their own GCash app to
  * the landlord's wallet, then submits the reference number from the
- * confirmation screen here. The payment is recorded with the reference in
- * its notes; the landlord verifies it against their GCash history. Repeated
- * submissions of the same reference can't create a second payment.
+ * confirmation screen here. The submission is recorded as **pending**: it
+ * shows in the tenant's payment history and in the landlord's Finance queue,
+ * but does not reduce the balance (or count as income) until the landlord
+ * verifies it against their GCash history. Repeated submissions of the same
+ * reference can't create a second payment; a reference the landlord rejected
+ * can be resubmitted, which reopens it for review.
  *
  * The amount is the lease's outstanding statement balance at submit time —
  * rent plus any sub-metered utilities and manual charges not yet covered — so
@@ -236,20 +243,36 @@ export async function confirmGcashPaymentAction(
 
   const notes = gcashPaymentNote(parsed.data.reference);
   const [existing] = await db
-    .select({ id: payments.id })
+    .select({ id: payments.id, status: payments.status })
     .from(payments)
     .where(and(eq(payments.leaseId, leaseId), eq(payments.notes, notes)))
     .limit(1);
-  if (!existing) {
+
+  if (existing?.status === "rejected") {
+    // The landlord turned this reference away — resubmitting reopens it for
+    // review at the current balance instead of stacking a second payment.
+    await db
+      .update(payments)
+      .set({
+        status: "pending",
+        reviewedAt: null,
+        amount: found.amountDue.toFixed(2),
+        paidDate: todayPaymentDate(),
+      })
+      .where(eq(payments.id, existing.id));
+  } else if (!existing) {
     const ok = await recordRentPayment({
       leaseId,
       userId: session.user.id,
       amount: found.amountDue,
       method: "gcash",
       notes,
+      status: "pending",
     });
     if (!ok) return { error: "Payment could not be recorded." };
   }
+  // An already-pending or already-verified row is the idempotent path: the
+  // submission is on file, nothing new to write.
 
   revalidatePath("/portal");
   // The landlord's finance page and dashboard income KPI read payments.

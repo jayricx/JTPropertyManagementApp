@@ -76,6 +76,8 @@ async function getStats(userId: string): Promise<DashboardStats> {
               inArray(properties.id, propertyIds),
             ),
             gte(payments.paidDate, firstOfMonth),
+            // Pending tenant submissions aren't income yet.
+            eq(payments.status, "paid"),
           ),
         ),
       db

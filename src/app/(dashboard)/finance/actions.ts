@@ -11,6 +11,10 @@ import {
   type ExpenseSuggestion,
 } from "@/lib/expense-intelligence";
 import { awardXp } from "@/lib/gamification";
+import {
+  rejectPendingPayment,
+  verifyPendingPayment,
+} from "@/lib/rent-payment";
 import { monthRangeDates } from "@/lib/utils";
 import {
   expenseSchema,
@@ -213,6 +217,71 @@ export async function deletePaymentAction(
     .returning({ id: payments.id });
 
   revalidateFinancePaths();
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// Payment review — tenant GCash submissions await the owner's approval
+// ---------------------------------------------------------------------------
+
+/**
+ * Review rights: only someone who manages the payment's lease (owner or
+ * co-owner, viewers excluded) may approve or turn away a tenant submission.
+ * The submitting tenant themselves never can.
+ */
+async function canReviewPayment(userId: string, paymentId: string) {
+  const rows = await db
+    .select({ leaseId: payments.leaseId })
+    .from(payments)
+    .where(eq(payments.id, paymentId))
+    .limit(1);
+  if (!rows.length || !rows[0].leaseId) return false;
+  return canManageLease(userId, rows[0].leaseId);
+}
+
+/**
+ * Approve a pending tenant GCash submission: it starts counting toward the
+ * statement and income, and the tenant gets their receipt. The claim inside
+ * `verifyPendingPayment` is atomic, so a double-click can't send two receipts.
+ */
+export async function verifyPaymentAction(
+  paymentId: string,
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (!(await canReviewPayment(session.user.id, paymentId))) {
+    return { error: "Payment not found." };
+  }
+
+  const verified = await verifyPendingPayment(paymentId);
+  if (!verified) return { error: "This payment was already reviewed." };
+
+  await awardXp(session.user.id, "payment_recorded");
+  revalidateFinancePaths();
+  // The tenant's payment history and statement reflect the approval.
+  revalidatePath("/portal");
+  return {};
+}
+
+/**
+ * Turn a pending tenant GCash submission away: it stops counting toward the
+ * balance, stays on record as rejected, and the tenant may resubmit a
+ * corrected reference.
+ */
+export async function rejectPaymentAction(
+  paymentId: string,
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (!(await canReviewPayment(session.user.id, paymentId))) {
+    return { error: "Payment not found." };
+  }
+
+  const rejected = await rejectPendingPayment(paymentId);
+  if (!rejected) return { error: "This payment was already reviewed." };
+
+  revalidateFinancePaths();
+  revalidatePath("/portal");
   return {};
 }
 

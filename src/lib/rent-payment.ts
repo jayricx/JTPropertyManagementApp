@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { leases, payments, properties, tenants, units } from "@/db/schema";
 import { sendPaymentReceipt } from "@/lib/email";
@@ -48,23 +48,33 @@ export interface RentPaymentInput {
   method: PaymentMethod;
   /** Free-text note; for GCash payments use `gcashPaymentNote(reference)`. */
   notes: string;
+  /**
+   * `pending` for tenant GCash submissions awaiting the landlord's approval —
+   * no receipt is sent yet (the landlord's verification sends it). Defaults to
+   * `paid`: the landlord's own records and gateway-settled card payments need
+   * no approval.
+   */
+  status?: "pending" | "paid";
+}
+
+/** The names a payment receipt needs, loaded straight from the lease. */
+interface LeaseReceiptInfo {
+  tenantFirstName: string;
+  tenantLastName: string;
+  tenantEmail: string | null;
+  unitName: string;
+  propertyName: string;
 }
 
 /**
- * Record a rent payment against a lease and email the tenant a receipt.
- * Returns the new payment's id, or null when the lease doesn't exist (callers
- * treat that as failure). The id lets card-checkout webhooks link the gateway
- * session to the payment row they created.
- *
- * The lease row is loaded first so the receipt always names the current
- * property/unit/tenant — nothing comes from the client.
+ * Load the current property/unit/tenant for a lease — nothing comes from the
+ * client, so a receipt always names the real countersignees.
  */
-export async function recordRentPayment(
-  input: RentPaymentInput,
-): Promise<string | null> {
+async function loadLeaseReceiptInfo(
+  leaseId: string,
+): Promise<LeaseReceiptInfo | null> {
   const [lease] = await db
     .select({
-      id: leases.id,
       tenantFirstName: tenants.firstName,
       tenantLastName: tenants.lastName,
       tenantEmail: tenants.email,
@@ -75,8 +85,48 @@ export async function recordRentPayment(
     .innerJoin(tenants, eq(leases.tenantId, tenants.id))
     .innerJoin(units, eq(leases.unitId, units.id))
     .innerJoin(properties, eq(units.propertyId, properties.id))
-    .where(eq(leases.id, input.leaseId))
+    .where(eq(leases.id, leaseId))
     .limit(1);
+  return lease ?? null;
+}
+
+/**
+ * Email the tenant a receipt for a payment. A receipt that fails to send must
+ * not fail (or worse, roll back) the payment; the landlord still sees it in
+ * Finance.
+ */
+async function emailReceipt(
+  leaseId: string,
+  amount: number,
+  paidDate: Date,
+): Promise<void> {
+  const lease = await loadLeaseReceiptInfo(leaseId);
+  if (!lease?.tenantEmail) return;
+  try {
+    await sendPaymentReceipt({
+      to: lease.tenantEmail,
+      tenantName: `${lease.tenantFirstName} ${lease.tenantLastName}`.trim(),
+      amountText: formatCurrency(amount),
+      paidDate,
+      unitName: lease.unitName,
+      propertyName: lease.propertyName,
+    });
+  } catch (error) {
+    console.error("[rent-payment] receipt email failed", error);
+  }
+}
+
+/**
+ * Record a rent payment against a lease and email the tenant a receipt
+ * (unless it is a `pending` GCash submission awaiting the landlord's
+ * verification). Returns the new payment's id, or null when the lease doesn't
+ * exist (callers treat that as failure). The id lets card-checkout webhooks
+ * link the gateway session to the payment row they created.
+ */
+export async function recordRentPayment(
+  input: RentPaymentInput,
+): Promise<string | null> {
+  const lease = await loadLeaseReceiptInfo(input.leaseId);
   if (!lease) return null;
 
   const [inserted] = await db
@@ -88,25 +138,54 @@ export async function recordRentPayment(
       paidDate: todayPaymentDate(),
       method: input.method,
       type: "rent",
+      status: input.status ?? "paid",
       notes: input.notes,
     })
     .returning({ id: payments.id });
 
-  if (lease.tenantEmail) {
-    // A receipt that fails to send must not fail (or worse, roll back) a
-    // recorded payment; the landlord still sees the payment in Finance.
-    try {
-      await sendPaymentReceipt({
-        to: lease.tenantEmail,
-        tenantName: `${lease.tenantFirstName} ${lease.tenantLastName}`.trim(),
-        amountText: formatCurrency(input.amount),
-        paidDate: todayPaymentDate(),
-        unitName: lease.unitName,
-        propertyName: lease.propertyName,
-      });
-    } catch (error) {
-      console.error("[rent-payment] receipt email failed", error);
-    }
+  if (input.status !== "pending") {
+    await emailReceipt(input.leaseId, input.amount, todayPaymentDate());
   }
   return inserted?.id ?? null;
+}
+
+/**
+ * Approve a pending tenant payment: flip it to `paid` (only while it still is
+ * pending — the conditional claim makes a double-click harmless) and email the
+ * tenant their receipt. Returns false when the row was already reviewed.
+ */
+export async function verifyPendingPayment(
+  paymentId: string,
+): Promise<boolean> {
+  const [claimed] = await db
+    .update(payments)
+    .set({ status: "paid", reviewedAt: new Date() })
+    .where(and(eq(payments.id, paymentId), eq(payments.status, "pending")))
+    .returning({
+      leaseId: payments.leaseId,
+      amount: payments.amount,
+      paidDate: payments.paidDate,
+    });
+  if (!claimed) return false;
+
+  if (claimed.leaseId) {
+    await emailReceipt(claimed.leaseId, Number(claimed.amount), claimed.paidDate);
+  }
+  return true;
+}
+
+/**
+ * Turn a pending tenant payment away: mark it `rejected` so it stops counting
+ * toward the statement and income, keeping the row as a record of the refusal.
+ * Returns false when the row was already reviewed.
+ */
+export async function rejectPendingPayment(
+  paymentId: string,
+): Promise<boolean> {
+  const [claimed] = await db
+    .update(payments)
+    .set({ status: "rejected", reviewedAt: new Date() })
+    .where(and(eq(payments.id, paymentId), eq(payments.status, "pending")))
+    .returning({ id: payments.id });
+  return Boolean(claimed);
 }

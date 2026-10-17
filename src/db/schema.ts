@@ -368,6 +368,18 @@ export const paymentTypeEnum = pgEnum("payment_type", [
   "other",
 ]);
 
+/**
+ * Tenant GCash submissions land as `pending` and only count as income once
+ * the landlord verifies them against their GCash history (`paid`), or are
+ * turned away (`rejected`). Records the landlord enters themselves, manual
+ * backfills, and gateway-settled card payments are `paid` from the start.
+ */
+export const paymentStatusEnum = pgEnum("payment_status", [
+  "pending",
+  "paid",
+  "rejected",
+]);
+
 export const payments = pgTable(
   "payments",
   {
@@ -382,6 +394,9 @@ export const payments = pgTable(
     paidDate: date("paid_date", { mode: "date" }).notNull(),
     method: paymentMethodEnum("method").default("other").notNull(),
     type: paymentTypeEnum("type").default("rent").notNull(),
+    status: paymentStatusEnum("status").default("paid").notNull(),
+    /** When the landlord approved or turned the payment away (null while pending). */
+    reviewedAt: timestamp("reviewed_at", { mode: "date" }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },

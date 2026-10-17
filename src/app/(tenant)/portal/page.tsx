@@ -60,6 +60,22 @@ const leaseStatusClass: Record<LeaseStatus, string> = {
   ended: "border-border bg-muted text-muted-foreground",
 };
 
+/** Mirrors `payments.status` — GCash submissions await the landlord's review. */
+type PaymentStatus = "pending" | "paid" | "rejected";
+
+const paymentStatusClass: Record<PaymentStatus, string> = {
+  pending:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400",
+  paid: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400",
+  rejected: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+};
+
+const paymentStatusLabel: Record<PaymentStatus, string> = {
+  pending: "Awaiting verification",
+  paid: "Verified",
+  rejected: "Not accepted",
+};
+
 const statusClass: Record<MaintenanceStatus, string> = {
   new: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-400",
   in_progress:
@@ -157,6 +173,7 @@ export default async function TenantPortalPage({
           paidDate: payments.paidDate,
           method: payments.method,
           type: payments.type,
+          status: payments.status,
         })
         .from(payments)
         .where(inArray(payments.leaseId, leaseIds))
@@ -190,7 +207,14 @@ export default async function TenantPortalPage({
   }
 
   const active = leaseRows.find((l) => l.status === "active") ?? null;
-  const lastPayment = paymentRows[0] ?? null;
+  // "Last payment" is the most recent *verified* one — a submission still
+  // awaiting the landlord's approval isn't confirmed money yet.
+  const lastPayment = paymentRows.find((p) => p.status === "paid") ?? null;
+  const pendingPayments = paymentRows.filter((p) => p.status === "pending");
+  const pendingTotal = pendingPayments.reduce(
+    (s, p) => s + Number(p.amount),
+    0,
+  );
   const openRequests = requestRows.filter(
     (r) => r.status === "new" || r.status === "in_progress",
   ).length;
@@ -219,8 +243,10 @@ export default async function TenantPortalPage({
       {/* Payment result banners — from the GCash reference submission. */}
       {payment === "success" && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400">
-          Payment recorded — thank you! It is now in your payment history
-          below.
+          Payment submitted — it now appears below as{" "}
+          <strong>awaiting verification</strong>. Your landlord checks it
+          against their GCash history; your balance updates once they verify
+          it.
         </div>
       )}
       {payment === "error" && (
@@ -404,8 +430,16 @@ export default async function TenantPortalPage({
               <p>
                 Rent plus any electricity and water you&apos;ve used make up
                 your balance; pay it from your GCash app, then submit the
-                reference number to record the payment.
+                reference number. Your landlord verifies each submission
+                against their GCash history before it counts.
               </p>
+              {pendingTotal > 0 && (
+                <p className="font-medium text-amber-700 dark:text-amber-400">
+                  {formatCurrency(pendingTotal)} submitted is awaiting your
+                  landlord&apos;s verification and is not yet included in your
+                  balance.
+                </p>
+              )}
               {lastPayment && (
                 <p>
                   Last payment recorded: {formatCurrency(lastPayment.amount)} on{" "}
@@ -451,6 +485,7 @@ export default async function TenantPortalPage({
                   <TableHead>Date</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Method</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
@@ -461,6 +496,14 @@ export default async function TenantPortalPage({
                     <TableCell>{paymentTypeLabels[p.type]}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {paymentMethodLabels[p.method]}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={paymentStatusClass[p.status]}
+                      >
+                        {paymentStatusLabel[p.status]}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(p.amount)}

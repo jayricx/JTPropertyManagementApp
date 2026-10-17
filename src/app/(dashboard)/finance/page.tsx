@@ -23,6 +23,7 @@ import {
 import { ExpenseFormDialog } from "@/components/finance/expense-form-dialog";
 import { ExpenseRowActions } from "@/components/finance/expense-row-actions";
 import { PaymentFormDialog } from "@/components/finance/payment-form-dialog";
+import { PaymentReviewActions } from "@/components/finance/payment-review-actions";
 import { PaymentRowActions } from "@/components/finance/payment-row-actions";
 import { PropertyFilter } from "@/components/filters/property-filter";
 import {
@@ -81,6 +82,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           paidDate: payments.paidDate,
           method: payments.method,
           type: payments.type,
+          status: payments.status,
           notes: payments.notes,
           tenantFirst: tenants.firstName,
           tenantLast: tenants.lastName,
@@ -166,16 +168,18 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   const selection = isFiltered ? new Set(propertyFilter) : null;
   // Records booked to no property ("Not linked"/unassigned) belong to no
   // property, so they drop out whenever a filter is active.
-  const paymentRows = selection
-    ? allPayments.filter(
-        (p) => p.propertyId !== null && selection.has(p.propertyId),
-      )
-    : allPayments;
-  const expenseRows = selection
-    ? allExpenses.filter(
-        (e) => e.propertyId !== null && selection.has(e.propertyId),
-      )
-    : allExpenses;
+  const inFilter = (propertyId: string | null) =>
+    !selection || (propertyId !== null && selection.has(propertyId));
+  // Tenant GCash submissions awaiting approval live in their own queue and
+  // stay out of the ledger (totals, P&L, per-property splits) until verified;
+  // rejected submissions never show — they count nowhere.
+  const pendingRows = allPayments.filter(
+    (p) => p.status === "pending" && inFilter(p.propertyId),
+  );
+  const paymentRows = allPayments.filter(
+    (p) => p.status === "paid" && inFilter(p.propertyId),
+  );
+  const expenseRows = allExpenses.filter((e) => inFilter(e.propertyId));
 
   const totalIncome = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
@@ -283,6 +287,66 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           tone="teal"
         />
       </div>
+
+      {pendingRows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Awaiting verification</CardTitle>
+            <CardDescription>
+              GCash payments submitted by tenants. Check each reference against
+              your GCash history and verify it — until then it is not counted
+              as income and doesn&apos;t reduce the tenant&apos;s balance.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Submitted</TableHead>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Review</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingRows.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>{formatDate(p.paidDate)}</TableCell>
+                    <TableCell>
+                      <div>
+                        {p.tenantFirst} {p.tenantLast}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {p.unitName} · {p.propertyName}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {p.notes ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(p.amount)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {p.propertyId != null &&
+                      manageableSet.has(p.propertyId) ? (
+                        <PaymentReviewActions
+                          paymentId={p.id}
+                          amountLabel={formatCurrency(p.amount)}
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Awaiting owner
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">

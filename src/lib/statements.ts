@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   charges,
@@ -156,7 +156,9 @@ export async function getLeaseStatement(
         paidDate: payments.paidDate,
       })
       .from(payments)
-      .where(eq(payments.leaseId, leaseId)),
+      // Only payments the landlord verified count toward the balance — a
+      // pending GCash submission must not quiet the charge it claims to pay.
+      .where(and(eq(payments.leaseId, leaseId), eq(payments.status, "paid"))),
   ]);
 
   const startMonth = monthKey(lease.startDate);

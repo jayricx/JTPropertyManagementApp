@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 
 /**
  * Submit the GCash reference number after sending rent from the GCash app.
- * The payment records on success; the landlord verifies the reference.
+ * The submission records as pending — the landlord verifies it before it
+ * counts toward the balance.
  */
 export function GcashReferenceForm({ leaseId }: { leaseId: string }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -32,7 +33,8 @@ export function GcashReferenceForm({ leaseId }: { leaseId: string }) {
         />
         <p className="text-xs text-muted-foreground">
           Found on your GCash confirmation screen, right after you send the
-          money.
+          money. The payment shows as <strong>awaiting verification</strong>{" "}
+          until your landlord checks it.
         </p>
         {state?.error && (
           <p className="text-sm font-medium text-destructive">{state.error}</p>

@@ -49,3 +49,7 @@ next-env.d.ts
 
 # scratch scripts (local migrations, one-off test runs)
 _*.mjs
+_*.mts
+
+# local commit-message file (PowerShell here-string workaround)
+.git-commit-msg.txt

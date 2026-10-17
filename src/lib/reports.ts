@@ -220,6 +220,10 @@ export async function getReportData(
           and(
             gte(payments.paidDate, from),
             lte(payments.paidDate, to),
+            // Only verified payments are income; a pending tenant submission
+            // may span the review and disappear from older reports once
+            // approved (its date is the submission day).
+            eq(payments.status, "paid"),
             // A property filter counts only those properties (payments with
             // no lease/property drop out). Otherwise: own records (incl.
             // unassigned) plus accessible properties.

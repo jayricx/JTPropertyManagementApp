@@ -303,7 +303,10 @@ export async function getGamificationOverview(
           paidDate: payments.paidDate,
         })
         .from(payments)
-        .where(inArray(payments.leaseId, leaseIds))
+        // Rent-collection health counts only verified payments.
+        .where(
+          and(inArray(payments.leaseId, leaseIds), eq(payments.status, "paid")),
+        )
     : [];
 
   // ---- Level -------------------------------------------------------------
