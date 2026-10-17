@@ -334,6 +334,60 @@ export const payments = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Card checkout sessions. A hosted gateway page (PayMongo) charges the
+// tenant's card; the gateway's webhook — not the browser — confirms payment.
+// `providerRef` is the gateway's own session id and is unique, which makes
+// webhook handling idempotent: a replayed event can only ever match one row.
+// `paymentId` links to the payments row written once the charge succeeds, so
+// a payment is never recorded twice.
+// ---------------------------------------------------------------------------
+
+export const checkoutStatusEnum = pgEnum("checkout_status", [
+  "pending",
+  "paid",
+  "expired",
+  "failed",
+]);
+
+export const paymentCheckouts = pgTable(
+  "payment_checkouts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leaseId: uuid("lease_id")
+      .notNull()
+      .references(() => leases.id, { onDelete: "cascade" }),
+    // The tenant account that opened the checkout (the payer).
+    tenantAccountId: uuid("tenant_account_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 32 }).default("paymongo").notNull(),
+    /** The gateway's checkout session id. */
+    providerRef: varchar("provider_ref", { length: 255 }).notNull(),
+    /**
+     * Our own reference, sent to the gateway and echoed back on its webhook.
+     * A stable fallback match key if the session id ever changes shape.
+     */
+    referenceNumber: varchar("reference_number", { length: 64 }).notNull(),
+    /** The amount in centavos, as the gateway expects integers. */
+    amountCentavos: integer("amount_centavos").notNull(),
+    status: checkoutStatusEnum("status").default("pending").notNull(),
+    /** The payments row created once the charge is confirmed. */
+    paymentId: uuid("payment_id").references(() => payments.id, {
+      onDelete: "set null",
+    }),
+    paidAt: timestamp("paid_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("payment_checkouts_provider_ref_key").on(t.providerRef),
+    unique("payment_checkouts_reference_number_key").on(t.referenceNumber),
+    index("payment_checkouts_lease_id_idx").on(t.leaseId),
+    index("payment_checkouts_tenant_account_id_idx").on(t.tenantAccountId),
+  ],
+);
+
 export const expenseCategoryEnum = pgEnum("expense_category", [
   "repair",
   "maintenance",

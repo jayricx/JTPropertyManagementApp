@@ -1,18 +1,22 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, maintenanceRequests, payments, properties, tenants, units } from "@/db/schema";
+import { leases, maintenanceRequests, paymentCheckouts, payments, properties, tenants, units } from "@/db/schema";
 import { documents } from "@/db/schema";
+import { appUrl } from "@/lib/app-url";
 import {
   sanitizeFileName,
   validateMediaFile,
   validateMediaSelection,
 } from "@/lib/attachments";
+import { pesosToCentavos } from "@/lib/payments/money";
+import { createCheckoutSession, paymongoEnabled } from "@/lib/payments/paymongo";
 import { gcashPaymentNote, recordRentPayment } from "@/lib/rent-payment";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
@@ -278,4 +282,67 @@ export async function confirmGcashPaymentAction(
   revalidatePath("/finance");
   revalidatePath("/dashboard");
   redirect("/portal?payment=success");
+}
+
+/** `url` is where the client should send the tenant to complete card payment. */
+export type CardCheckoutState = { error?: string; url?: string } | null;
+
+/**
+ * Start a card rent payment. Creates a hosted checkout session with the
+ * gateway and returns its URL for the client to redirect to. The payment is
+ * *not* recorded here — only the gateway's webhook can confirm a real charge
+ * (see `/api/payments/paymongo/webhook`). A matching `paymentCheckouts` row is
+ * written first so the webhook has something to reconcile against.
+ */
+export async function startCardCheckoutAction(
+  _prev: CardCheckoutState,
+  formData: FormData,
+): Promise<CardCheckoutState> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "tenant") redirect("/login");
+  if (!paymongoEnabled()) {
+    return { error: "Card payments aren't available right now." };
+  }
+
+  const leaseId = String(formData.get("leaseId") ?? "");
+  const found = await loadPayableLease(session.user.id, leaseId);
+  if (!found) return { error: "Lease not found." };
+  const { lease } = found;
+
+  const amountCentavos = pesosToCentavos(lease.rentAmount);
+  if (amountCentavos <= 0) {
+    return { error: "This lease has no rent amount to charge." };
+  }
+
+  const referenceNumber = randomUUID();
+  const origin = appUrl();
+  const returnPath = `${origin}/portal/pay-rent/${leaseId}/card`;
+
+  let checkout;
+  try {
+    checkout = await createCheckoutSession({
+      amountCentavos,
+      lineItemName: `Rent — ${lease.propertyName} Unit ${lease.unitName}`,
+      description: `Rent for ${lease.propertyName}, Unit ${lease.unitName}`,
+      referenceNumber,
+      successUrl: `${returnPath}?status=success`,
+      cancelUrl: `${returnPath}?status=cancel`,
+    });
+  } catch (error) {
+    console.error("[paymongo] could not create checkout session", error);
+    return { error: "Could not start the card payment. Please try again." };
+  }
+
+  await db.insert(paymentCheckouts).values({
+    leaseId,
+    tenantAccountId: session.user.id,
+    provider: "paymongo",
+    providerRef: checkout.id,
+    referenceNumber,
+    amountCentavos,
+    status: "pending",
+  });
+
+  revalidatePath(`/portal/pay-rent/${leaseId}/card`);
+  return { url: checkout.checkoutUrl };
 }
