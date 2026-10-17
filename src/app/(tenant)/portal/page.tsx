@@ -469,7 +469,10 @@ export default async function TenantPortalPage({
           <CardTitle>Payment history</CardTitle>
           <CardDescription>
             {paymentRows.length
-              ? `${paymentRows.length} payment${paymentRows.length === 1 ? "" : "s"} recorded`
+              ? `${paymentRows.length} payment${paymentRows.length === 1 ? "" : "s"} on record` +
+                (pendingPayments.length
+                  ? ` · ${pendingPayments.length} awaiting verification`
+                  : "")
               : "No payments recorded yet"}
           </CardDescription>
         </CardHeader>
