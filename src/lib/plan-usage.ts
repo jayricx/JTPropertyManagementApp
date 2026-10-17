@@ -4,12 +4,7 @@ import { count, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { properties, units, users } from "@/db/schema";
-import {
-  PLAN_LABELS,
-  PLAN_UNIT_LIMITS,
-  type PlanTier,
-  unitLimit,
-} from "./plans";
+import { PLAN_LABELS, type PlanTier, unitLimit } from "./plans";
 
 export interface PlanUsage {
   plan: PlanTier;

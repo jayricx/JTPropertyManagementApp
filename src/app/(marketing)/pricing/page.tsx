@@ -30,7 +30,7 @@ const TIER_FEATURES = {
     "Co-owner collaboration",
   ],
   business: [
-    "Unlimited units",
+    "Up to 100 units",
     "Everything in Pro",
     "Accounting sync (coming soon)",
     "E-signature (coming soon)",
@@ -106,9 +106,13 @@ export default async function PricingPage() {
           })}
         </div>
         <p className="mx-auto mt-8 max-w-2xl text-center text-sm text-muted-foreground">
-          Paid plans aren't billed yet — new accounts start on Free. We'll switch on GCash
-          payments at launch; until then upgrades are handled manually. Your free data
-          carries over.
+          Paid plans aren&apos;t billed yet — new accounts start on Free. We&apos;ll switch
+          on GCash payments at launch; until then upgrades are handled manually. Your free
+          data carries over.
+        </p>
+        <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
+          Managing more than 100 units? A portfolio plan is on our roadmap — get in touch and
+          we&apos;ll set you up.
         </p>
       </section>
     </div>

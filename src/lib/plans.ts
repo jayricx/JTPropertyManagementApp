@@ -2,10 +2,13 @@ export const PLAN_TIERS = ["free", "pro", "business"] as const;
 
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
+// No plan is unlimited: Business caps at 100 units, and a portfolio offer for
+// larger landlords is deliberately left for later — hence the `number | null`
+// shape, ready for that tier to return one day. Every current tier is a number.
 export const PLAN_UNIT_LIMITS: Record<PlanTier, number | null> = {
   free: 2,
   pro: 20,
-  business: null,
+  business: 100,
 };
 
 export const PLAN_LABELS: Record<PlanTier, string> = {
