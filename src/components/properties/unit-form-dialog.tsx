@@ -43,10 +43,11 @@ import {
   createUnitAction,
   suggestRentAction,
   updateUnitAction,
-  type ActionState,
+  type UnitActionState,
 } from "@/app/(dashboard)/properties/actions";
 import { SuggestionChip } from "@/components/ai/suggestion-chip";
 import type { RentSuggestion } from "@/lib/rent-insights";
+import { UpgradePanel } from "@/components/plans/upgrade-panel";
 
 interface UnitFormDialogProps {
   propertyId: string;
@@ -56,7 +57,7 @@ interface UnitFormDialogProps {
 
 export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
   const action = unit ? updateUnitAction : createUnitAction;
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+  const [state, formAction, pending] = useActionState<UnitActionState, FormData>(
     action,
     null,
   );
@@ -298,11 +299,17 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
                 </FormItem>
               )}
             />
-            {state?.error && (
+            {state && "upgrade" in state ? (
+              <UpgradePanel
+                title="You've reached your plan's unit limit"
+                description="Your properties and units stay exactly as they are. Upgrade to add more units and unlock more features."
+                note={`Free plan: ${state.upgrade.used} of ${state.upgrade.limit} units used.`}
+              />
+            ) : state?.error ? (
               <p className="text-sm font-medium text-destructive">
                 {state.error}
               </p>
-            )}
+            ) : null}
             <DialogFooter>
               <DialogClose render={<Button variant="outline" />}>
                 Cancel

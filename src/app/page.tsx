@@ -49,6 +49,9 @@ export default function LandingPage() {
               Sign in
             </Button>
           </Link>
+          <Link href="/pricing" className="text-sm font-medium text-primary hover:underline">
+            See plans
+          </Link>
         </div>
       </section>
       <section className="grid gap-6 px-6 py-16 sm:grid-cols-2 lg:grid-cols-4">

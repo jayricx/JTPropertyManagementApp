@@ -16,12 +16,15 @@ import {
 import { accessiblePropertyIds } from "@/lib/access";
 import { formatCurrency } from "@/lib/utils";
 import { propertyTypeLabels } from "@/lib/validations";
+import { getPlanUsage } from "@/lib/plan-usage";
+import { PlanUsageMeter } from "@/components/plans/plan-usage-meter";
 
 export default async function PropertiesPage() {
   const session = await auth();
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
+  const usage = await getPlanUsage(userId);
 
   // Owned properties plus properties shared with this user as co-owner.
   const accessibleIds = await accessiblePropertyIds(userId);
@@ -70,6 +73,19 @@ export default async function PropertiesPage() {
           <p className="text-muted-foreground">
             Manage your properties and their units.
           </p>
+          {usage.limit !== null ? (
+            <PlanUsageMeter
+              planLabel={usage.planLabel}
+              used={usage.used}
+              limit={usage.limit}
+              atLimit={usage.atLimit}
+              className="mt-1"
+            />
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {usage.planLabel} plan · unlimited units
+            </p>
+          )}
         </div>
         <Button render={<Link href="/properties/new" />}>
           <PlusIcon />

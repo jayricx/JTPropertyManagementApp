@@ -14,8 +14,10 @@ import {
 } from "@/lib/rent-insights";
 import { isUuid } from "@/lib/utils";
 import { propertySchema, unitSchema, type UnitFormParsed } from "@/lib/validations";
+import { getPlanUsage, type PlanUsage } from "@/lib/plan-usage";
 
 export type ActionState = { error: string } | null;
+export type UnitActionState = { error: string } | { upgrade: PlanUsage } | null;
 
 /**
  * Read-only: a rent suggestion for a unit, or for a new unit in a property,
@@ -256,9 +258,9 @@ function unitDbValues(data: UnitFormParsed) {
 }
 
 export async function createUnitAction(
-  _prev: ActionState,
+  _prev: UnitActionState,
   formData: FormData,
-): Promise<ActionState> {
+): Promise<UnitActionState> {
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
@@ -275,6 +277,11 @@ export async function createUnitAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid unit data." };
   }
 
+  const usage = await getPlanUsage(session.user.id);
+  if (usage.atLimit && usage.limit !== null) {
+    return { upgrade: usage };
+  }
+
   await db.insert(units).values({ ...unitDbValues(parsed.data), propertyId });
 
   await awardXp(session.user.id, "unit_created");
@@ -283,9 +290,9 @@ export async function createUnitAction(
 }
 
 export async function updateUnitAction(
-  _prev: ActionState,
+  _prev: UnitActionState,
   formData: FormData,
-): Promise<ActionState> {
+): Promise<UnitActionState> {
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 

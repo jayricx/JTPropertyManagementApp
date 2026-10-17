@@ -18,6 +18,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export const userRoleEnum = pgEnum("user_role", ["landlord", "tenant"]);
+export const planTierEnum = pgEnum("plan_tier", ["free", "pro", "business"]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -32,6 +33,8 @@ export const users = pgTable("users", {
   passwordChangedAt: timestamp("password_changed_at", { mode: "date" }),
   // Landlords run the dashboard; tenant accounts only ever see the portal.
   role: userRoleEnum("role").default("landlord").notNull(),
+  // Subscription/usage tier. Defaults to free for new signups.
+  plan: planTierEnum("plan").default("free").notNull(),
   // Landlord payout details for the tenant portal's GCash pay-rent flow.
   // Tenants send rent to this wallet and submit the reference number.
   gcashNumber: varchar("gcash_number", { length: 20 }),
