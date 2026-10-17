@@ -32,7 +32,10 @@ const SHARED_SENDER = "JT Property Management <onboarding@resend.dev>";
 // Treat a blank or whitespace-only value as unset: an empty variable in
 // .env.local or the Vercel dashboard must not blank out the sender.
 const gmailUser = (process.env.GMAIL_USER ?? "").trim();
-const gmailPassword = (process.env.GMAIL_APP_PASSWORD ?? "").trim();
+// Google shows app passwords as four space-separated groups ("abcd efgh ijkl
+// mnop") and copy-paste keeps the spaces, so strip them — the password itself
+// is always 16 non-space characters.
+const gmailPassword = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s+/g, "");
 const resendKey = (process.env.RESEND_API_KEY ?? "").trim();
 const explicitFrom = (process.env.EMAIL_FROM ?? "").trim();
 
