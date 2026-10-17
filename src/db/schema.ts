@@ -132,6 +132,7 @@ export const properties = pgTable(
     country: varchar("country", { length: 100 }),
     type: propertyTypeEnum("type").default("other").notNull(),
     notes: text("notes"),
+    customFields: text("custom_fields").default("{}").notNull(),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
   },
@@ -273,6 +274,7 @@ export const tenants = pgTable(
     email: varchar("email", { length: 255 }),
     phone: varchar("phone", { length: 50 }),
     notes: text("notes"),
+    customFields: text("custom_fields").default("{}").notNull(),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [index("tenants_user_id_idx").on(t.userId)],
@@ -303,6 +305,7 @@ export const leases = pgTable(
     depositReturned: boolean("deposit_returned").default(false).notNull(),
     status: leaseStatusEnum("status").default("active").notNull(),
     notes: text("notes"),
+    customFields: text("custom_fields").default("{}").notNull(),
     // When the lease-end reminder email went out; reset if the end date moves.
     leaseEndReminderSentAt: timestamp("lease_end_reminder_sent_at", {
       mode: "date",
@@ -704,6 +707,73 @@ export const documents = pgTable(
     index("documents_maintenance_request_id_idx").on(t.maintenanceRequestId),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Custom fields — definitions and values per entity (property/lease/tenant).
+// Definitions are scoped to the workspace owner (userId). Values are stored
+// as JSONB on each entity for flexible querying and rendering.
+// ---------------------------------------------------------------------------
+
+export const customFieldEntityEnum = pgEnum("custom_field_entity", [
+  "property",
+  "lease",
+  "tenant",
+]);
+
+export const customFieldTypeEnum = pgEnum("custom_field_type", [
+  "text",
+  "textarea",
+  "number",
+  "date",
+  "select",
+  "checkbox",
+  "email",
+  "phone",
+]);
+
+export const customFieldDefinitions = pgTable(
+  "custom_field_definitions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    entity: customFieldEntityEnum("entity").notNull(),
+    /** Stable key used as the JSONB key for values. */
+    key: varchar("key", { length: 64 }).notNull(),
+    label: varchar("label", { length: 255 }).notNull(),
+    type: customFieldTypeEnum("type").default("text").notNull(),
+    required: boolean("required").default(false).notNull(),
+    /** Comma-separated options for select fields. */
+    options: text("options"),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("custom_field_definitions_user_entity_key").on(
+      t.userId,
+      t.entity,
+      t.key,
+    ),
+    index("custom_field_definitions_user_id_idx").on(t.userId),
+  ],
+);
+
+export type CustomFieldDefinition = typeof customFieldDefinitions.$inferSelect;
+export type NewCustomFieldDefinition = typeof customFieldDefinitions.$inferInsert;
+
+// Add customFields JSONB columns to entities.
+export const customFieldsProperty = {
+  customFields: text("custom_fields").default("{}").notNull(),
+};
+export const customFieldsLease = {
+  customFields: text("custom_fields").default("{}").notNull(),
+};
+export const customFieldsTenant = {
+  customFields: text("custom_fields").default("{}").notNull(),
+};
+
+// We'll add these as columns below. Let us patch the table definitions next.
 
 export const notifications = pgTable(
   "notifications",

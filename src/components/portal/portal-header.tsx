@@ -26,7 +26,7 @@ export function PortalHeader({
           className="flex min-w-0 items-center gap-2 font-semibold"
         >
           <Image src="/icon.svg" alt="" width={24} height={24} priority />
-          <span className="truncate">JT Property Management</span>
+          <span className="truncate">RentBase-PH</span>
           <span className="hidden rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground sm:inline">
             Tenant portal
           </span>

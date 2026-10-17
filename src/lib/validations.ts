@@ -102,6 +102,37 @@ export const propertySchema = z.object({
 export type PropertyFormValues = z.input<typeof propertySchema>;
 export type PropertyFormParsed = z.output<typeof propertySchema>;
 
+export const customFieldTypeEnumValues = [
+  "text",
+  "textarea",
+  "number",
+  "date",
+  "select",
+  "checkbox",
+  "email",
+  "phone",
+] as const;
+export type CustomFieldType = (typeof customFieldTypeEnumValues)[number];
+
+export const customFieldDefinitionSchema = z.object({
+  label: z.string().trim().min(1, "Label is required").max(255, "Label must be at most 255 characters"),
+  key: z
+    .string()
+    .trim()
+    .min(1, "Key is required")
+    .max(64, "Key must be at most 64 characters")
+    .regex(/^[a-z0-9_]+$/, "Key must be lowercase letters, numbers, and underscores only"),
+  type: z.enum(customFieldTypeEnumValues),
+  required: z.boolean().optional(),
+  options: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+});
+export type CustomFieldDefinitionFormValues = z.input<typeof customFieldDefinitionSchema>;
+export type CustomFieldDefinitionFormParsed = z.output<typeof customFieldDefinitionSchema>;
+
 export const unitSchema = z.object({
   name: z
     .string()
