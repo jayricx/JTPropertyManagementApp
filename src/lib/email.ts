@@ -27,7 +27,7 @@ const GMAIL_PORT = 465;
  * recipient is refused. Replace EMAIL_FROM with an address on a verified
  * domain once you have one.
  */
-const SHARED_SENDER = "JT Property Management <onboarding@resend.dev>";
+const SHARED_SENDER = "RentBase-PH <onboarding@resend.dev>";
 
 // Treat a blank or whitespace-only value as unset: an empty variable in
 // .env.local or the Vercel dashboard must not blank out the sender.
@@ -68,7 +68,7 @@ const FROM =
   TRANSPORT === "gmail"
     ? gmailFromMatches
       ? explicitFrom
-      : `JT Property Management <${gmailUser}>`
+      : `RentBase-PH <${gmailUser}>`
     : explicitFrom || SHARED_SENDER;
 
 const usingSharedSender = TRANSPORT === "resend" && !explicitFrom;
@@ -157,14 +157,14 @@ export function emailShell(title: string, bodyHtml: string): string {
   <body style="margin:0;padding:24px;background-color:#f4f5f7;font-family:Segoe UI,Helvetica,Arial,sans-serif;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
       <div style="background:linear-gradient(135deg,#064e3b,#10b981);padding:20px 24px;">
-        <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;">JT Property Management</span>
+        <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;">RentBase-PH</span>
       </div>
       <div style="padding:24px;color:#111827;font-size:15px;line-height:1.6;">
         <h1 style="margin:0 0 12px;font-size:18px;">${title}</h1>
         ${bodyHtml}
       </div>
       <div style="padding:16px 24px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">
-        Sent by JT Property Management
+        Sent by RentBase-PH
       </div>
     </div>
   </body>
@@ -303,7 +303,7 @@ export async function sendLeaseEndAlerts(
     await sendEmail({
       to: landlordEmail,
       subject: `Lease ending soon: ${tenantName} — ${unitName}`,
-      text: `Hi ${landlordName ?? "there"},\n\nThe lease for ${tenantName} at ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nMonthly rent: ₱${rentAmount}\n\nReview or renew the lease: ${leaseUrl}\n\n— JT Property Management`,
+      text: `Hi ${landlordName ?? "there"},\n\nThe lease for ${tenantName} at ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nMonthly rent: ₱${rentAmount}\n\nReview or renew the lease: ${leaseUrl}\n\n— RentBase-PH`,
       html: emailShell(
         "Lease ending soon",
         `<p>Hi ${escapeHtml(landlordName ?? "there")},</p>
@@ -320,7 +320,7 @@ export async function sendLeaseEndAlerts(
       await sendEmail({
         to: tenantEmail,
         subject: `Your lease ends on ${endDateText}`,
-        text: `Hi ${tenantName},\n\nThis is a reminder that your lease for ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nContact your landlord to discuss renewal or move-out arrangements.\n\n— JT Property Management`,
+        text: `Hi ${tenantName},\n\nThis is a reminder that your lease for ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nContact your landlord to discuss renewal or move-out arrangements.\n\n— RentBase-PH`,
         html: emailShell(
           "Your lease ends soon",
           `<p>Hi ${tenantLabel},</p>
@@ -355,7 +355,7 @@ export async function sendPaymentReceipt(r: PaymentReceipt): Promise<SendResult>
   return sendEmail({
     to: r.to,
     subject: `Payment received: ${r.amountText} rent`,
-    text: `Hi ${r.tenantName},\n\nWe received your rent payment of ${r.amountText} on ${dateText} for ${r.unitName} (${r.propertyName}).\n\nView your payment history: ${portalUrl}\n\n— JT Property Management`,
+    text: `Hi ${r.tenantName},\n\nWe received your rent payment of ${r.amountText} on ${dateText} for ${r.unitName} (${r.propertyName}).\n\nView your payment history: ${portalUrl}\n\n— RentBase-PH`,
     html: emailShell(
       "Payment received",
       `<p>Hi ${tenantLabel},</p>
@@ -386,8 +386,8 @@ export async function sendVerificationCodeEmail(
 
   return sendEmail({
     to: r.to,
-    subject: `${r.code} is your JT Property Management code`,
-    text: `${greeting}\n\nYour verification code is ${r.code}\n\nEnter it to finish creating your account. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign up, you can ignore this email — no account was created.\n\n— JT Property Management`,
+    subject: `${r.code} is your RentBase-PH code`,
+    text: `${greeting}\n\nYour verification code is ${r.code}\n\nEnter it to finish creating your account. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign up, you can ignore this email — no account was created.\n\n— RentBase-PH`,
     html: emailShell(
       "Confirm your email",
       `<p>${greeting}</p>
@@ -395,7 +395,7 @@ export async function sendVerificationCodeEmail(
        <p style="font-size:32px;letter-spacing:10px;font-weight:700;margin:20px 0;color:#064e3b;">${codeLabel}</p>
        <p style="color:#6b7280;font-size:13px;">It works once and expires in ${r.expiresInMinutes} minutes.</p>
        <p style="color:#6b7280;font-size:13px;">If you didn't try to sign up, you can ignore this email — no account was created.</p>
-       <p><a href="${portalUrl}" style="font-size:13px;color:#6b7280;">Open JT Property Management</a></p>`,
+       <p><a href="${portalUrl}" style="font-size:13px;color:#6b7280;">Open RentBase-PH</a></p>`,
     ),
   });
 }
@@ -423,7 +423,7 @@ export async function sendPortalInviteEmail(
   return sendEmail({
     to: r.to,
     subject: `${escapeHtml(r.landlordName)} invited you to your tenant portal`,
-    text: `Hi ${r.tenantName},\n\n${r.landlordName} has set up your tenant portal, where you can see your lease, pay rent, and report repairs.\n\nChoose your password here — it takes a moment and works once:\n${r.setupUrl}\n\nOr sign in any time after that at:\n${portalUrl}\n\n— JT Property Management`,
+    text: `Hi ${r.tenantName},\n\n${r.landlordName} has set up your tenant portal, where you can see your lease, pay rent, and report repairs.\n\nChoose your password here — it takes a moment and works once:\n${r.setupUrl}\n\nOr sign in any time after that at:\n${portalUrl}\n\n— RentBase-PH`,
     html: emailShell(
       "You're invited to your tenant portal",
       `<p>Hi ${tenantLabel},</p>
@@ -454,8 +454,8 @@ export async function sendPasswordResetEmail(
 
   return sendEmail({
     to: r.to,
-    subject: "Reset your JT Property password",
-    text: `${greeting}\n\nUse the link below to choose a new password. It works once and expires in ${r.expiresInMinutes} minutes.\n\n${r.resetUrl}\n\nIf you didn't ask for this, you can ignore this email — nothing has changed.\n\n— JT Property Management`,
+    subject: "Reset your RentBase-PH password",
+    text: `${greeting}\n\nUse the link below to choose a new password. It works once and expires in ${r.expiresInMinutes} minutes.\n\n${r.resetUrl}\n\nIf you didn't ask for this, you can ignore this email — nothing has changed.\n\n— RentBase-PH`,
     html: emailShell(
       "Reset your password",
       `<p>${greeting}</p>

@@ -1,8 +1,0 @@
-feat: add utility sub-metering + per-tenant monthly statements
-
-- schema + tables: meters, meter_readings, charges + enums
-- statement computation with rate-snapshotted utilities + manual charges
-- meter/reading CRUD and charges on leases
-- readings page, statement table wired to lease edit + portal
-- portal pay uses outstanding balance (includes arrears)
-- wired property meters card and new components

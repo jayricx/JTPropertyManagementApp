@@ -20,10 +20,10 @@ export const metadata: Metadata = {
   title: "Property Management System",
   description:
     "Register properties, track income, and manage maintenance for your rental portfolio.",
-  applicationName: "JT Property Management",
+  applicationName: "RentBase-PH",
   appleWebApp: {
     capable: true,
-    title: "JT Property",
+    title: "RentBase-PH",
     // Edge-to-edge under the notch; the chrome pads itself with
     // env(safe-area-inset-*).
     statusBarStyle: "black-translucent",
