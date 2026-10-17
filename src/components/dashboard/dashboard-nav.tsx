@@ -134,7 +134,7 @@ function NavBrand({
         height={compact ? 24 : 26}
         priority
       />
-      <span className="truncate">JT Property Management</span>
+      <span className="truncate">RentBase-PH</span>
     </Link>
   );
 }
