@@ -77,6 +77,12 @@ Register a new account at `/register` to create your landlord account.
 4. Deploy. Run migrations on deploy with the `db:migrate` script, or use
    `drizzle-kit push` once from a shell via `vercel run`.
 
+Optional: add `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` (with
+`<your-deployment>/api/auth/callback/google` registered as an authorized
+redirect URI on the OAuth client) to show **Continue with Google** on the
+sign-in and register pages. Leave them out and email/password is the only
+method.
+
 ## Roadmap
 
 See `PLAN.md` for the full plan. Next milestones:
@@ -93,5 +99,8 @@ See `PLAN.md` for the full plan. Next milestones:
 - `cacheComponents` is disabled in `next.config.ts` because the dashboard
   reads the server session (cookies). Re-enable it later with `<Suspense>`
   boundaries around dynamic segments if you want partial prerendering.
-- OAuth (e.g. Google) can be added to `src/auth.ts` providers — the
-  adapter and tables are already wired up.
+- OAuth (e.g. Google) is wired up in `src/auth.ts`: set `AUTH_GOOGLE_ID` +
+  `AUTH_GOOGLE_SECRET` and the "Continue with Google" button appears on
+  `/login` and `/register`. Google links to an existing account with the same
+  (Google-verified) email, so invited tenants and owner-tenants keep one
+  profile across both methods.
