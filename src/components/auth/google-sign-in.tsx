@@ -15,11 +15,17 @@ const AFTER_SIGN_IN = "/dashboard";
  * "Continue with Google" with an "or" rule beneath it. Rendered only when the
  * server has reported that Google is configured, so this file never probes for
  * credentials and no secret ever reaches the browser bundle.
+ *
+ * `callbackUrl` defaults to the shared dashboard landing. The tenant invite
+ * page overrides it to return to `/portal-setup` with its token, where the
+ * invite is then linked to the freshly signed-in account.
  */
 export function GoogleSignIn({
   label = "Continue with Google",
+  callbackUrl = AFTER_SIGN_IN,
 }: {
   label?: string;
+  callbackUrl?: string;
 }) {
   const [redirecting, setRedirecting] = useState(false);
 
@@ -34,7 +40,7 @@ export function GoogleSignIn({
           setRedirecting(true);
           // A full-page navigation to Google, so there is no local state to
           // unwind on the way out.
-          void signIn("google", { callbackUrl: AFTER_SIGN_IN });
+          void signIn("google", { callbackUrl });
         }}
       >
         <GoogleMark />

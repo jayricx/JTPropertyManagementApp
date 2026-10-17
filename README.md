@@ -80,8 +80,9 @@ Register a new account at `/register` to create your landlord account.
 Optional: add `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` (with
 `<your-deployment>/api/auth/callback/google` registered as an authorized
 redirect URI on the OAuth client) to show **Continue with Google** on the
-sign-in and register pages. Leave them out and email/password is the only
-method.
+sign-in and register pages, and on the tenant invite page (`/portal-setup`) so
+an invited tenant can accept without choosing a password. Leave them out and
+email/password is the only method.
 
 ## Roadmap
 
@@ -101,6 +102,9 @@ See `PLAN.md` for the full plan. Next milestones:
   boundaries around dynamic segments if you want partial prerendering.
 - OAuth (e.g. Google) is wired up in `src/auth.ts`: set `AUTH_GOOGLE_ID` +
   `AUTH_GOOGLE_SECRET` and the "Continue with Google" button appears on
-  `/login` and `/register`. Google links to an existing account with the same
-  (Google-verified) email, so invited tenants and owner-tenants keep one
-  profile across both methods.
+  `/login`, `/register`, and `/portal-setup`. Google links to an existing
+  account with the same (Google-verified) email, so invited tenants and
+  owner-tenants keep one profile across both methods. On `/portal-setup` the
+  button returns to the page with its invite token, and the signed-in account
+  claims the invite (see `claimInvitationForAccount`); the account's email must
+  match the invited address, so a wrong-account click never burns the token.
