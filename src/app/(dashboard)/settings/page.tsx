@@ -63,9 +63,10 @@ export default async function SettingsPage() {
             <MailIcon className="size-5" /> Email delivery
           </CardTitle>
           <CardDescription>
-            Password resets and payment receipts go out through this account.
-            Send yourself a test to confirm the sender, the key and the links
-            inside each email are all right.
+            Password resets, tenant invites and payment receipts go out through
+            this sender — Gmail SMTP or Resend. Send yourself a test to confirm
+            the transport, the sender and the links inside each email are all
+            right.
           </CardDescription>
         </CardHeader>
         <CardContent>

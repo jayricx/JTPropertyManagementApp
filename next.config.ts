@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // nodemailer does runtime `require`s of optional deps (aws-sdk etc.) that
+  // break when bundled, so keep it on Node's own resolver — the documented
+  // fix for Node-specific packages in Server Components / Route Handlers.
+  serverExternalPackages: ["nodemailer"],
   // NOTE: cacheComponents is disabled because auth-gated dashboard pages read
   // cookies/server sessions. Re-enable later if you want partial prerendering,
   // wrapping dynamic segments in <Suspense> boundaries.

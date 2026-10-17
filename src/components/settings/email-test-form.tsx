@@ -16,16 +16,24 @@ import { CircleAlertIcon, CircleCheckIcon } from "lucide-react";
  * one address, links pointing at the wrong host) are all visible here.
  */
 export function EmailTestForm({
+  transport,
   sender,
   sharedSender,
   configured,
   appUrl,
 }: {
+  transport: "gmail" | "resend" | "log";
   sender: string;
   sharedSender: boolean;
   configured: boolean;
   appUrl: string;
 }) {
+  const transportLabel =
+    transport === "gmail"
+      ? "Gmail SMTP — reaches any recipient"
+      : transport === "resend"
+        ? "Resend"
+        : "Not configured — logging only";
   const [state, formAction, pending] = useActionState<TestEmailState, FormData>(
     sendTestEmailAction,
     null,
@@ -52,6 +60,9 @@ export function EmailTestForm({
   return (
     <div className="space-y-4">
       <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
+        <dt className="text-muted-foreground">Sending via</dt>
+        <dd className="font-medium break-all">{transportLabel}</dd>
+
         <dt className="text-muted-foreground">Sending as</dt>
         <dd className="font-medium break-all">{sender}</dd>
 
@@ -69,8 +80,10 @@ export function EmailTestForm({
 
       {!configured && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          No <code>RESEND_API_KEY</code> is set, so emails are only written to the
-          server log — nothing is actually sent.
+          Email isn&apos;t configured, so messages are only written to the server
+          log — nothing is actually sent. Set <code>GMAIL_USER</code> and{" "}
+          <code>GMAIL_APP_PASSWORD</code> to send from your own Gmail address,
+          or set <code>RESEND_API_KEY</code> to send through Resend.
         </p>
       )}
 

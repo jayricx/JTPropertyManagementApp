@@ -6,7 +6,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { emailShell, sendEmail } from "@/lib/email";
+import { emailDiagnostics, emailShell, sendEmail } from "@/lib/email";
 
 /** `ok` lets the form show a saved state after a successful update. */
 export type ActionState = { error?: string; ok?: boolean } | null;
@@ -115,10 +115,14 @@ If you are reading it, sending works.`,
     ),
   });
 
+  const transport = emailDiagnostics().transport;
+  const provider =
+    transport === "gmail" ? "Gmail" : transport === "resend" ? "Resend" : null;
+
   return result.delivered
     ? {
         status: "sent",
-        detail: `Resend accepted the message for ${to}. Check the inbox, then spam.`,
+        detail: `${provider ?? "The provider"} accepted the message for ${to}. Check the inbox, then spam.`,
       }
     : {
         status: "failed",

@@ -1,10 +1,25 @@
+import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 import { Resend } from "resend";
 
 /**
- * Email delivery via Resend. When RESEND_API_KEY is not configured (local
- * development), emails are logged to the server console instead of sent, so
- * the whole flow stays testable without credentials.
+ * Email delivery. Two transports are supported and chosen automatically:
+ *
+ *  - Gmail SMTP — set GMAIL_USER and GMAIL_APP_PASSWORD. Sends from your own
+ *    Gmail (or Google Workspace) address, so it reaches any recipient before
+ *    you own a sending domain.
+ *  - Resend — set RESEND_API_KEY. Until EMAIL_FROM names a verified domain it
+ *    delivers only to the Resend account's own address.
+ *
+ * Gmail is preferred when both are configured because it has no domain
+ * requirement. With neither (local development) emails are logged to the
+ * server console instead of sent, so every flow stays testable.
  */
+
+/** Google's SMTP endpoint, shared by Gmail and Google Workspace accounts. */
+const GMAIL_HOST = "smtp.gmail.com";
+/** 465 is implicit TLS; 587 (STARTTLS) also works but needs more config. */
+const GMAIL_PORT = 465;
 
 /**
  * Resend's shared testing sender. It works without a domain of your own, but
@@ -16,11 +31,47 @@ const SHARED_SENDER = "JT Property Management <onboarding@resend.dev>";
 
 // Treat a blank or whitespace-only value as unset: an empty variable in
 // .env.local or the Vercel dashboard must not blank out the sender.
-const from = (process.env.EMAIL_FROM ?? "").trim();
-const FROM = from || SHARED_SENDER;
-const usingSharedSender = !from;
+const gmailUser = (process.env.GMAIL_USER ?? "").trim();
+const gmailPassword = (process.env.GMAIL_APP_PASSWORD ?? "").trim();
+const resendKey = (process.env.RESEND_API_KEY ?? "").trim();
+const explicitFrom = (process.env.EMAIL_FROM ?? "").trim();
+
+export type EmailTransport = "gmail" | "resend" | "log";
+
+const gmailConfigured = Boolean(gmailUser && gmailPassword);
+const resendConfigured = Boolean(resendKey);
+
+const TRANSPORT: EmailTransport = gmailConfigured
+  ? "gmail"
+  : resendConfigured
+    ? "resend"
+    : "log";
+
+/** Pull the bare address out of `Name <addr@host>` (or return the value). */
+function addressOf(value: string): string {
+  const angled = value.match(/<([^>]+)>/);
+  return (angled ? angled[1] : value).trim().toLowerCase();
+}
+
+/**
+ * Gmail only lets you send as the authenticated account (or a verified
+ * "send mail as" alias), so unless EMAIL_FROM is exactly that address it is
+ * ignored rather than handed to Google to bounce.
+ */
+const gmailFromMatches =
+  explicitFrom !== "" && addressOf(explicitFrom) === gmailUser.toLowerCase();
+
+const FROM =
+  TRANSPORT === "gmail"
+    ? gmailFromMatches
+      ? explicitFrom
+      : `JT Property Management <${gmailUser}>`
+    : explicitFrom || SHARED_SENDER;
+
+const usingSharedSender = TRANSPORT === "resend" && !explicitFrom;
 
 let warnedAboutSharedSender = false;
+let warnedAboutGmailFrom = false;
 
 // Same blank-means-unset rule as EMAIL_FROM: a bare AUTH_URL would build links
 // that point nowhere.
@@ -34,11 +85,13 @@ const APP_URL = appUrl || "http://localhost:3000";
  */
 export function emailDiagnostics() {
   return {
+    /** Which delivery path the server picked for this deployment. */
+    transport: TRANSPORT,
     sender: FROM,
-    /** True when the shared Resend sender is in use (owner address only). */
+    /** True when Resend's shared sender is in use (owner address only). */
     sharedSender: usingSharedSender,
     /** False when emails are only logged to the server console. */
-    configured: Boolean(process.env.RESEND_API_KEY),
+    configured: TRANSPORT !== "log",
     /** The host that links inside emails point back to. */
     appUrl: APP_URL,
   };
@@ -46,10 +99,28 @@ export function emailDiagnostics() {
 
 let resendClient: Resend | null = null;
 
-function getClient(): Resend | null {
-  if (!process.env.RESEND_API_KEY) return null;
-  if (!resendClient) resendClient = new Resend(process.env.RESEND_API_KEY);
+function getResend(): Resend | null {
+  if (!resendConfigured) return null;
+  if (!resendClient) resendClient = new Resend(resendKey);
   return resendClient;
+}
+
+let gmailTransporter: Transporter | null = null;
+
+function getGmailTransporter(): Transporter {
+  if (!gmailTransporter) {
+    gmailTransporter = nodemailer.createTransport({
+      host: GMAIL_HOST,
+      port: GMAIL_PORT,
+      secure: true, // implicit TLS on 465
+      auth: { user: gmailUser, pass: gmailPassword },
+      // Fail fast: a stuck socket must not hang the request that sent it.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+    });
+  }
+  return gmailTransporter;
 }
 
 export interface EmailPayload {
@@ -98,15 +169,57 @@ export function emailShell(title: string, bodyHtml: string): string {
 }
 
 export async function sendEmail(payload: EmailPayload): Promise<SendResult> {
-  const client = getClient();
-
-  if (!client) {
-    // No API key (local dev) — log the email so flows remain testable.
+  const logInstead = () => {
+    // No transport (local dev) — log the email so flows remain testable.
     console.log(
       `[email:dev] To: ${payload.to}\n[email:dev] Subject: ${payload.subject}\n[email:dev] Body:\n${payload.text}`,
     );
-    return { delivered: false, reason: "RESEND_API_KEY not set — logged instead" };
+    return {
+      delivered: false,
+      reason: "No email transport configured — logged instead",
+    } satisfies SendResult;
+  };
+
+  if (TRANSPORT === "log") return logInstead();
+
+  if (TRANSPORT === "gmail") {
+    if (!warnedAboutGmailFrom && explicitFrom !== "" && !gmailFromMatches) {
+      warnedAboutGmailFrom = true;
+      console.warn(
+        `[email] EMAIL_FROM (${explicitFrom}) is not your GMAIL_USER — Gmail ` +
+          `can only send as ${gmailUser}. Sending as ${FROM} instead.`,
+      );
+    }
+
+    try {
+      const info = await getGmailTransporter().sendMail({
+        from: FROM,
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+      });
+      const rejected = (info.rejected ?? []).map(String);
+      if (rejected.length) {
+        console.error("[email:error] Gmail rejected:", rejected);
+        return {
+          delivered: false,
+          reason: `Gmail rejected: ${rejected.join(", ")}`,
+        };
+      }
+      return { delivered: true };
+    } catch (error) {
+      console.error("[email:error]", error);
+      return {
+        delivered: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
+
+  const client = getResend();
+  // Unreachable given how TRANSPORT is resolved, but keeps the guard honest.
+  if (!client) return logInstead();
 
   if (usingSharedSender && !warnedAboutSharedSender) {
     warnedAboutSharedSender = true;
