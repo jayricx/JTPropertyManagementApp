@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Property Management System",
+  title: "RentBase-PH",
   description:
     "Register properties, track income, and manage maintenance for your rental portfolio.",
   applicationName: "RentBase-PH",
