@@ -7,6 +7,8 @@ import { users } from "@/db/schema";
 import { emailDiagnostics } from "@/lib/email";
 import { EmailTestForm } from "@/components/settings/email-test-form";
 import { GcashSettingsForm } from "@/components/settings/gcash-settings-form";
+import { getPlanUsage } from "@/lib/plan-usage";
+import { PlanUsageMeter } from "@/components/plans/plan-usage-meter";
 import {
   Card,
   CardContent,
@@ -27,6 +29,7 @@ export default async function SettingsPage() {
     .from(users)
     .where(eq(users.id, session.user.id))
     .limit(1);
+  const usage = await getPlanUsage(session.user.id);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -36,6 +39,19 @@ export default async function SettingsPage() {
           Payment details tenants see when paying rent, and your email delivery
           settings.
         </p>
+        {usage.limit !== null ? (
+          <PlanUsageMeter
+            planLabel={usage.planLabel}
+            used={usage.used}
+            limit={usage.limit}
+            atLimit={usage.atLimit}
+            className="mt-1"
+          />
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {usage.planLabel} plan · unlimited units
+          </p>
+        )}
       </div>
 
       <Card>
