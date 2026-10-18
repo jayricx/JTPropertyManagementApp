@@ -88,6 +88,8 @@ email/password is the only method.
 
 See `PLAN.md` for the full plan. Next milestones:
 
+- **Portfolio model** — a Portfolio becomes the bucket that owns properties, leases, tenants and
+  custom fields, with members granted access by role (see `PORTFOLIO.md` for the design)
 - Properties & units CRUD with photo uploads
 - Tenants & leases management
 - Income/expense tracking + reports
