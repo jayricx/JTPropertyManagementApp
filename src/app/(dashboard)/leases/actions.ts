@@ -22,6 +22,7 @@ import {
 } from "@/lib/attachments";
 import { awardXp } from "@/lib/gamification";
 import { saveLeaseSignature } from "@/lib/signatures";
+import { accountVerification } from "@/lib/signature-verification";
 import { isUuid } from "@/lib/utils";
 import {
   contractTermsSchema,
@@ -823,6 +824,9 @@ export async function signContractAsLandlordAction(
       signerName: parsed.data.signerName,
       method: parsed.data.method,
       signature,
+      // The landlord's identity is the signed-in account that manages the
+      // lease — no separate code for the party who holds the document.
+      verification: await accountVerification(),
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Signing failed." };

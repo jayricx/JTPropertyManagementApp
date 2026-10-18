@@ -8,7 +8,11 @@ import {
   resolveAccessToken,
   signaturesForContract,
 } from "@/lib/contracts";
-import { signContractByTokenAction } from "./actions";
+import { maskEmail } from "@/lib/signature-verification";
+import {
+  sendContractSignatureCodeAction,
+  signContractByTokenAction,
+} from "./actions";
 
 export const metadata = {
   title: "Your lease agreement — RentBase-PH",
@@ -39,6 +43,7 @@ export default async function ContractTokenPage({
 
   const signatures = await signaturesForContract(contract.id);
   const completed = contract.status === "completed";
+  const tenantEmail = contract.terms.tenantEmail.trim();
   const landlord =
     contract.terms.landlordBusinessName ||
     contract.terms.landlordName ||
@@ -94,7 +99,7 @@ export default async function ContractTokenPage({
 
       <ContractDocument contract={contract} signatures={signatures} viewerRole="tenant" />
 
-      {!completed && linkValid && (
+      {!completed && linkValid && tenantEmail && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border p-4">
           <SignatureDialog
             action={signContractByTokenAction}
@@ -110,10 +115,21 @@ export default async function ContractTokenPage({
             resigning={Boolean(signatures.tenant)}
             submitLabel="Sign contract"
             attestation="I have read this contract and agree that my electronic signature is the legal equivalent of my handwritten signature on it."
+            verification={{
+              email: maskEmail(tenantEmail),
+              sendCode: sendContractSignatureCodeAction,
+            }}
           />
           <p className="text-xs text-muted-foreground">
             Signing here is all that&apos;s needed — nothing to print or send back.
           </p>
+        </div>
+      )}
+
+      {!completed && linkValid && !tenantEmail && (
+        <div className="rounded-lg border border-amber-500/60 bg-amber-500/10 p-4 text-sm">
+          This contract has no email address on it, so it can&apos;t be verified for
+          signing. Ask {landlord} to add your email and send it again.
         </div>
       )}
 

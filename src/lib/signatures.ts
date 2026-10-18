@@ -20,6 +20,32 @@ export const signatureMethodLabels: Record<SignatureMethod, string> = {
   drawn: "Drawn signature",
 };
 
+/** Mirrors `signature_verified_by` in the schema. */
+export const signatureVerifiedByValues = [
+  "email_code",
+  "account",
+  "link_only",
+] as const;
+export type SignatureVerifiedBy = (typeof signatureVerifiedByValues)[number];
+
+/** Short labels for signature blocks and the landlord's record. */
+export const signatureVerificationLabels: Record<SignatureVerifiedBy, string> = {
+  email_code: "Email verified",
+  account: "Account verified",
+  link_only: "Link only — not verified",
+};
+
+/** One-line explanations, for the place a landlord checks the evidence. */
+export const signatureVerificationDescriptions: Record<
+  SignatureVerifiedBy,
+  string
+> = {
+  email_code: "Entered a code sent to the tenant's email address.",
+  account: "Signed in to their RentBase-PH account.",
+  link_only:
+    "Signed from the emailed link before email verification was required.",
+};
+
 export interface LeaseSignature {
   role: SignatureRole;
   signerName: string;

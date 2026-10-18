@@ -484,6 +484,43 @@ export async function sendPortalInviteEmail(
   });
 }
 
+export interface SignatureCodeEmail {
+  to: string;
+  name: string;
+  code: string;
+  expiresInMinutes: number;
+  landlordLabel: string;
+  propertyLine: string;
+}
+
+/**
+ * The code that proves the signer controls the address the lease was sent to.
+ * Deliberately narrow: this email can only ever be about one contract, so a
+ * code read off a phone is obviously for the document on the other screen.
+ */
+export async function sendSignatureCodeEmail(
+  r: SignatureCodeEmail,
+): Promise<SendResult> {
+  const nameLabel = escapeHtml(r.name || "there");
+  const codeLabel = escapeHtml(r.code);
+  const landlordLabel = escapeHtml(r.landlordLabel);
+  const propertyLabel = escapeHtml(r.propertyLine);
+
+  return sendEmail({
+    to: r.to,
+    subject: `${r.code} is your lease signing code`,
+    text: `Hi ${r.name || "there"},\n\nYour lease signing code is ${r.code}.\n\nEnter it on the signing page to sign the lease for ${r.propertyLine} from ${r.landlordLabel}. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign, you can ignore this email — nothing has changed.\n\n— RentBase-PH`,
+    html: emailShell(
+      "Confirm it's you",
+      `<p>Hi ${nameLabel},</p>
+       <p>Enter this code to sign your lease for <strong>${propertyLabel}</strong> from ${landlordLabel}:</p>
+       <p style="font-size:32px;letter-spacing:10px;font-weight:700;margin:20px 0;color:#064e3b;">${codeLabel}</p>
+       <p style="color:#6b7280;font-size:13px;">It works once and expires in ${r.expiresInMinutes} minutes.</p>
+       <p style="color:#6b7280;font-size:13px;">If you didn't try to sign, you can ignore this email — nothing has changed.</p>`,
+    ),
+  });
+}
+
 export interface ContractEmail {
   to: string;
   tenantName: string;

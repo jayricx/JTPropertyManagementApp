@@ -474,6 +474,21 @@ export const signatureMethodEnum = pgEnum("signature_method", [
   "drawn",
 ]);
 
+/**
+ * How the signer was identified. This is the evidentiary part: a signature is
+ * an *attribute* until something ties it to a person, and a landlord staring
+ * at a signed contract needs to know which one they have.
+ *
+ * `link_only` marks signatures taken before verification was required. They are
+ * labelled rather than rewritten as verified, so the record stays honest about
+ * what actually happened at the time.
+ */
+export const signatureVerifiedByEnum = pgEnum("signature_verified_by", [
+  "email_code",
+  "account",
+  "link_only",
+]);
+
 export const leaseSignatures = pgTable(
   "lease_signatures",
   {
@@ -490,6 +505,12 @@ export const leaseSignatures = pgTable(
     // Typed: the name as written. Drawn: a PNG data URL of the strokes.
     signature: text("signature").notNull(),
     signedAt: timestamp("signed_at", { mode: "date" }).defaultNow().notNull(),
+    // How this party was identified. Null on pre-verification signatures.
+    verifiedBy: signatureVerifiedByEnum("verified_by"),
+    verifiedAt: timestamp("verified_at", { mode: "date" }),
+    /** Signing evidence: where it happened, for the day it's disputed. */
+    ipAddress: varchar("ip_address", { length: 64 }),
+    userAgent: varchar("user_agent", { length: 500 }),
   },
   (t) => [
     // One mark per party per contract version…
@@ -502,6 +523,45 @@ export const leaseSignatures = pgTable(
       .where(sql`${t.contractId} is null`),
     index("lease_signatures_lease_id_idx").on(t.leaseId),
     index("lease_signatures_contract_id_idx").on(t.contractId),
+  ],
+);
+
+/**
+ * A one-time email code proving the signer controls the address the contract
+ * was sent to. The signature itself records *that* verification happened; this
+ * table holds only the short-lived challenge while it is in progress.
+ *
+ * Only an HMAC of the code is stored, keyed with AUTH_SECRET and bound to the
+ * contract and role, so six digits can't be brute-forced from a database dump
+ * and a code can't be replayed on another document.
+ */
+export const contractSignatureChallenges = pgTable(
+  "contract_signature_challenges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    contractId: uuid("contract_id")
+      .notNull()
+      .references(() => leaseContracts.id, { onDelete: "cascade" }),
+    role: signatureRoleEnum("role").notNull(),
+    /** Where the code was sent — the address it is bound to. */
+    email: varchar("email", { length: 255 }).notNull(),
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    /** Wrong guesses so far; the challenge is dead once this hits the cap. */
+    attempts: integer("attempts").default(0).notNull(),
+    lastSentAt: timestamp("last_sent_at", { mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    /** Set the moment a code is accepted, so one code signs exactly once. */
+    consumedAt: timestamp("consumed_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    // One live challenge per party per contract version; requesting a new code
+    // replaces the previous one rather than creating a second valid code.
+    unique("contract_signature_challenges_contract_role_key").on(
+      t.contractId,
+      t.role,
+    ),
+    index("contract_signature_challenges_expires_at_idx").on(t.expiresAt),
   ],
 );
 

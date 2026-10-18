@@ -12,6 +12,8 @@ import {
   users,
 } from "@/db/schema";
 import type { ContractStatus } from "@/db/schema";
+import type { SignatureVerification } from "@/lib/signature-verification";
+import type { SignatureVerifiedBy } from "@/lib/signatures";
 
 /**
  * Lease contracts.
@@ -328,6 +330,28 @@ export interface ContractSignature {
   method: "typed" | "drawn";
   signature: string;
   signedAt: Date;
+  /** How the signer was identified; null on signatures that predate this. */
+  verifiedBy: SignatureVerifiedBy | null;
+  verifiedAt: Date | null;
+  /** Request evidence, recorded for the day a signature is disputed. */
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+function toContractSignature(
+  row: typeof leaseSignatures.$inferSelect,
+): ContractSignature {
+  return {
+    role: row.role,
+    signerName: row.signerName,
+    method: row.method,
+    signature: row.signature,
+    signedAt: row.signedAt,
+    verifiedBy: row.verifiedBy,
+    verifiedAt: row.verifiedAt,
+    ipAddress: row.ipAddress,
+    userAgent: row.userAgent,
+  };
 }
 
 /** The signature pair bound to one contract version. */
@@ -343,15 +367,7 @@ export async function signaturesForContract(
     landlord: null,
     tenant: null,
   };
-  for (const row of rows) {
-    byRole[row.role] = {
-      role: row.role,
-      signerName: row.signerName,
-      method: row.method,
-      signature: row.signature,
-      signedAt: row.signedAt,
-    };
-  }
+  for (const row of rows) byRole[row.role] = toContractSignature(row);
   return byRole;
 }
 
@@ -376,15 +392,7 @@ export async function effectiveSignatures(
     landlord: null,
     tenant: null,
   };
-  for (const row of rows) {
-    byRole[row.role] = {
-      role: row.role,
-      signerName: row.signerName,
-      method: row.method,
-      signature: row.signature,
-      signedAt: row.signedAt,
-    };
-  }
+  for (const row of rows) byRole[row.role] = toContractSignature(row);
   return byRole;
 }
 
@@ -593,6 +601,12 @@ export async function signContract(input: {
   signerName: string;
   method: "typed" | "drawn";
   signature: string;
+  /**
+   * Required: a signature without a statement of how the signer was
+   * identified is the thing this field exists to stop. Callers pass either
+   * `accountVerification()` or the result of a spent email code.
+   */
+  verification: SignatureVerification;
 }): Promise<void> {
   const contract = await getContract(input.contractId);
   if (!contract) throw new Error("That contract could not be found.");
@@ -615,6 +629,10 @@ export async function signContract(input: {
       method: input.method,
       signature: input.signature,
       signedAt,
+      verifiedBy: input.verification.verifiedBy,
+      verifiedAt: input.verification.verifiedAt,
+      ipAddress: input.verification.ipAddress,
+      userAgent: input.verification.userAgent,
     })
     .onConflictDoUpdate({
       target: [leaseSignatures.contractId, leaseSignatures.role],
@@ -627,6 +645,10 @@ export async function signContract(input: {
         method: input.method,
         signature: input.signature,
         signedAt,
+        verifiedBy: input.verification.verifiedBy,
+        verifiedAt: input.verification.verifiedAt,
+        ipAddress: input.verification.ipAddress,
+        userAgent: input.verification.userAgent,
       },
     });
 

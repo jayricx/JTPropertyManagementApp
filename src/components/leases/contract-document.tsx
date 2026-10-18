@@ -1,4 +1,5 @@
 import { SignatureDisplay } from "@/components/leases/signature-display";
+import { signatureVerificationLabels } from "@/lib/signatures";
 import {
   type ContractRecord,
   type ContractSignature,
@@ -97,6 +98,25 @@ export function ContractDocument({
                     <p className="text-xs text-muted-foreground">
                       Signed {formatDate(signature.signedAt)} ·{" "}
                       {signature.method === "typed" ? "typed" : "drawn"} signature
+                    </p>
+                    {/*
+                      How the signer was identified is part of the record, not
+                      a detail: "a name is on it" and "the person behind that
+                      name proved it" are different claims.
+                    */}
+                    <p
+                      className={
+                        signature.verifiedBy
+                          ? "text-xs text-muted-foreground"
+                          : "text-xs text-amber-700 dark:text-amber-400"
+                      }
+                    >
+                      {signature.verifiedBy
+                        ? signatureVerificationLabels[signature.verifiedBy]
+                        : "No verification recorded"}
+                      {signature.verifiedAt
+                        ? ` · ${formatDate(signature.verifiedAt)}`
+                        : ""}
                     </p>
                   </div>
                 </div>

@@ -150,7 +150,8 @@ export default async function TenantContractPage({
             attestation="I have read this contract and agree that my electronic signature is the legal equivalent of my handwritten signature on it."
           />
           <p className="text-xs text-muted-foreground">
-            Signing here is all that&apos;s needed — nothing to print or send back.
+            You&apos;re signed in, so this signature is tied to your account —
+            no code to wait for. Nothing to print or send back.
           </p>
         </div>
       )}

@@ -30,6 +30,7 @@ import {
 } from "@/lib/rent-payment";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { signContract } from "@/lib/contracts";
+import { accountVerification } from "@/lib/signature-verification";
 import { isUuid } from "@/lib/utils";
 import { leaseSignatureSchema, tenantRequestSchema } from "@/lib/validations";
 
@@ -162,6 +163,9 @@ export async function signContractAsTenantAction(
       signerName: parsed.data.signerName,
       method: parsed.data.method,
       signature,
+      // A signed-in tenant is identified by the account the lease is linked
+      // to, so no emailed code is needed here.
+      verification: await accountVerification(),
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Signing failed." };

@@ -37,6 +37,10 @@ import {
   formatLongDate,
 } from "@/lib/contracts";
 import { signContractAsLandlordAction } from "@/app/(dashboard)/leases/actions";
+import {
+  signatureVerificationDescriptions,
+  signatureVerificationLabels,
+} from "@/lib/signatures";
 import { formatDate, isUuid } from "@/lib/utils";
 
 interface ContractPageProps {
@@ -276,9 +280,86 @@ export default async function LeaseContractPage({
                     </Button>
                   )}
                 </div>
+                {canSign && (
+                  <p className="text-xs text-muted-foreground">
+                    Your signature is tied to your signed-in account. The tenant
+                    proves their email with a one-time code before theirs is
+                    recorded.
+                  </p>
+                )}
               </CardContent>
             )}
           </Card>
+
+          {/* The evidence behind the names. A signature block says who signed;
+              this says how that person was identified and where the request
+              came from, which is what settles an argument months later. */}
+          {(signatures.landlord || signatures.tenant) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Signing record</CardTitle>
+                <CardDescription>
+                  How each party was identified, and the request they signed
+                  from. IP and browser details are evidence, not proof — they
+                  tell you where a signature came from, not who was holding the
+                  phone.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                {(["landlord", "tenant"] as const).map((role) => {
+                  const signature = signatures[role];
+                  if (!signature) return null;
+                  return (
+                    <div key={role} className="space-y-2 rounded-lg border p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                          {role === "landlord" ? "Landlord" : "Tenant"}
+                        </p>
+                        <Badge
+                          variant={signature.verifiedBy ? "secondary" : "outline"}
+                          className="text-[10px]"
+                        >
+                          {signature.verifiedBy
+                            ? signatureVerificationLabels[signature.verifiedBy]
+                            : "Not verified"}
+                        </Badge>
+                      </div>
+                      <dl className="space-y-1 text-xs">
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-muted-foreground">Signed</dt>
+                          <dd>{formatDate(signature.signedAt)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-muted-foreground">Identified</dt>
+                          <dd>
+                            {signature.verifiedAt
+                              ? formatDate(signature.verifiedAt)
+                              : "—"}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-muted-foreground">IP address</dt>
+                          <dd className="font-mono">
+                            {signature.ipAddress ?? "not recorded"}
+                          </dd>
+                        </div>
+                      </dl>
+                      {signature.userAgent && (
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                          {signature.userAgent}
+                        </p>
+                      )}
+                      {signature.verifiedBy && (
+                        <p className="text-xs text-muted-foreground">
+                          {signatureVerificationDescriptions[signature.verifiedBy]}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           {/* The document itself. In draft it's a live preview of what the
               clauses above produce, so the landlord reads the contract rather
