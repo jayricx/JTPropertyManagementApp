@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
 import { DashboardNav } from "@/components/dashboard/dashboard-nav";
 import { PortfolioSwitcher } from "@/components/dashboard/portfolio-switcher";
 import { userHasTenantProfile } from "@/lib/portal-access";
@@ -16,16 +19,22 @@ export default async function DashboardLayout({
   if (session.user.role === "tenant") redirect("/portal");
 
   // An owner who also rents from another owner gets a portal switch link.
-  const [hasPortal, portfolios, activeId] = await Promise.all([
+  const [hasPortal, portfolios, activeId, account] = await Promise.all([
     userHasTenantProfile(session.user.id),
     listPortfolioSummaries(session.user.id),
     activePortfolioId(session.user.id),
+    db
+      .select({ isAdmin: users.isAdmin })
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1)
+      .then((rows) => rows[0]),
   ]);
 
   return (
     // Stacked on mobile (header above content), sidebar-left on desktop.
     <div className="flex min-h-svh flex-col md:flex-row">
-      <DashboardNav hasPortal={hasPortal}>
+      <DashboardNav hasPortal={hasPortal} isAdmin={account?.isAdmin ?? false}>
         {/* Renders only when the account belongs to more than one
             portfolio — a solo owner never sees the concept. */}
         <PortfolioSwitcher portfolios={portfolios} activeId={activeId} />

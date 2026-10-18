@@ -10,9 +10,11 @@ import {
   ChartColumnBig,
   FileText,
   Home,
+  Inbox,
   LayoutDashboard,
   Lightbulb,
   LogOut,
+  ShieldCheck,
   Menu,
   Settings,
   Users,
@@ -36,27 +38,40 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+/** Only rendered for `isAdmin` accounts. */
+const adminItems = [
+  { href: "/admin/landlords", label: "Landlord accounts", icon: ShieldCheck },
+  { href: "/feedback/inbox", label: "Request inbox", icon: Inbox },
+];
+
 function NavLinks({
   pathname,
   hasPortal = false,
+  isAdmin = false,
   onNavigate,
 }: {
   pathname: string;
   hasPortal?: boolean;
+  isAdmin?: boolean;
   onNavigate?: () => void;
 }) {
   const isItemActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
+  // Operator tools append in their own group; landlords never see them.
+  const items = isAdmin ? [...navItems, ...adminItems] : navItems;
+
   return (
     <>
-      {navItems.map((item) => (
+      {items.map((item, index) => (
         <Link
           key={item.href}
           href={item.href}
           onClick={onNavigate}
           className={cn(
             "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            // A gap before the operator group, so it reads as its own section.
+            isAdmin && index === navItems.length && "mt-4 border-t pt-3",
             isItemActive(item.href)
               ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_3px_0_0_0_var(--sidebar-primary)]"
               : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -143,14 +158,19 @@ function NavBrand({
 
 export function DashboardNav({
   hasPortal = false,
+  isAdmin = false,
   children,
 }: {
   hasPortal?: boolean;
+  /** Operator accounts get the landlord-accounts view in the sidebar. */
+  isAdmin?: boolean;
   /** Rendered under the brand in the sidebar (the portfolio switcher). */
   children?: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Operator tools are appended inside NavLinks, below.
 
   // Lock background scroll while the mobile drawer is open.
   useEffect(() => {
@@ -169,7 +189,11 @@ export function DashboardNav({
         </div>
         {children}
         <nav className="flex-1 space-y-1 p-4">
-          <NavLinks pathname={pathname} hasPortal={hasPortal} />
+          <NavLinks
+            pathname={pathname}
+            hasPortal={hasPortal}
+            isAdmin={isAdmin}
+          />
         </nav>
         <SidebarFooter />
       </aside>
@@ -224,6 +248,7 @@ export function DashboardNav({
               <NavLinks
                 pathname={pathname}
                 hasPortal={hasPortal}
+                isAdmin={isAdmin}
                 onNavigate={() => setMobileOpen(false)}
               />
             </nav>
