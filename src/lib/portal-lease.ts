@@ -1,8 +1,16 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { leases, properties, tenants, units, users } from "@/db/schema";
+import { bankAccounts, leases, properties, tenants, units, users } from "@/db/schema";
 import { getLeaseStatement, type LeaseStatement } from "@/lib/statements";
 import { isUuid } from "@/lib/utils";
+
+/** One of the landlord's bank accounts, shown on the bank-transfer page. */
+export interface PayableBankAccount {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+}
 
 export interface PayableLease {
   id: string;
@@ -15,6 +23,8 @@ export interface PayableLease {
   /** The landlord's GCash wallet, shown on the GCash method page. */
   gcashNumber: string | null;
   gcashName: string | null;
+  /** The landlord's active bank accounts, offered on the bank-transfer page. */
+  bankAccounts: PayableBankAccount[];
   /** The lease's full statement of account (rent + utilities + charges). */
   statement: LeaseStatement;
   /**
@@ -30,8 +40,9 @@ export interface PayableLease {
  * The signed-in tenant account's own *active* lease for `leaseId`, or null.
  * Guards every portal pay-rent page: a tenant may only ever pay a lease that
  * belongs to them, and only while it is active. Everything a payment needs
- * (rent, utilities, property, unit, and the landlord's GCash details) is
- * derived server-side from this row — nothing comes from the client.
+ * (rent, utilities, property, unit, and the landlord's GCash and bank
+ * details) is derived server-side from this row — nothing comes from the
+ * client.
  *
  * The amount to collect is everything still outstanding on the statement —
  * rent, sub-metered utilities, and manual charges, less payments recorded —
@@ -60,6 +71,7 @@ export async function loadPayableLease(
       rentAmount: leases.rentAmount,
       unitName: units.name,
       propertyName: properties.name,
+      landlordId: properties.userId,
       gcashNumber: users.gcashNumber,
       gcashName: users.gcashName,
     })
@@ -74,6 +86,23 @@ export async function loadPayableLease(
   const statement = await getLeaseStatement(lease.id);
   if (!statement) return null;
 
+  // The landlord's bank accounts tenants can transfer to. Only active ones —
+  // a deactivated account stops appearing on the pay-rent flow immediately.
+  const landlordBankAccounts = await db
+    .select({
+      id: bankAccounts.id,
+      bankName: bankAccounts.bankName,
+      accountNumber: bankAccounts.accountNumber,
+      accountName: bankAccounts.accountName,
+    })
+    .from(bankAccounts)
+    .where(
+      and(
+        eq(bankAccounts.userId, lease.landlordId),
+        eq(bankAccounts.isActive, true),
+      ),
+    );
+
   return {
     id: lease.id,
     startDate: lease.startDate,
@@ -83,6 +112,7 @@ export async function loadPayableLease(
     propertyName: lease.propertyName,
     gcashNumber: lease.gcashNumber,
     gcashName: lease.gcashName,
+    bankAccounts: landlordBankAccounts,
     statement,
     amountDue: Math.max(statement.outstanding, 0),
   };

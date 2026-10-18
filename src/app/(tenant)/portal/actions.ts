@@ -1,24 +1,21 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, maintenanceRequests, paymentCheckouts, payments, tenants, units } from "@/db/schema";
+import { leases, maintenanceRequests, payments, tenants, units } from "@/db/schema";
 import { documents } from "@/db/schema";
-import { appUrl } from "@/lib/app-url";
 import {
   sanitizeFileName,
   validateMediaFile,
   validateMediaSelection,
 } from "@/lib/attachments";
-import { pesosToCentavos } from "@/lib/payments/money";
-import { createCheckoutSession, paymongoEnabled } from "@/lib/payments/paymongo";
 import { loadPayableLease } from "@/lib/portal-lease";
 import {
+  bankTransferPaymentNote,
   gcashPaymentNote,
   recordRentPayment,
   todayPaymentDate,
@@ -281,64 +278,99 @@ export async function confirmGcashPaymentAction(
   redirect("/portal?payment=success");
 }
 
-/** `url` is where the client should send the tenant to complete card payment. */
-export type CardCheckoutState = { error?: string; url?: string } | null;
-
 /**
- * Start a card rent payment. Creates a hosted checkout session with the
- * gateway and returns its URL for the client to redirect to. The payment is
- * *not* recorded here — only the gateway's webhook can confirm a real charge
- * (see `/api/payments/paymongo/webhook`). A matching `paymentCheckouts` row is
- * written first so the webhook has something to reconcile against.
+ * "Pay rent" via bank transfer — the tenant sends rent from their own bank
+ * app to one of the landlord's accounts (chosen here so the landlord knows
+ * where to look), then submits the transaction reference from their
+ * confirmation screen. The submission is recorded as **pending**: it shows in
+ * the tenant's payment history and in the landlord's Finance queue, but does
+ * not reduce the balance (or count as income) until the landlord verifies it
+ * against their bank statement. The same idempotency rules as GCash apply —
+ * a duplicate reference can't create a second payment, and a reference the
+ * landlord rejected can be resubmitted, which reopens it for review.
  */
-export async function startCardCheckoutAction(
-  _prev: CardCheckoutState,
+export async function confirmBankTransferPaymentAction(
+  _prev: ActionState,
   formData: FormData,
-): Promise<CardCheckoutState> {
+): Promise<ActionState> {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!paymongoEnabled()) {
-    return { error: "Card payments aren't available right now." };
-  }
 
   const leaseId = String(formData.get("leaseId") ?? "");
+  const parsed = z
+    .object({
+      bankAccountId: z.string().trim().uuid("Choose the account you sent to."),
+      reference: z
+        .string()
+        .trim()
+        .regex(
+          /^[A-Za-z0-9-]{6,32}$/,
+          "Enter the transaction reference (6–32 letters, digits, or dashes).",
+        ),
+    })
+    .safeParse({
+      bankAccountId: formData.get("bankAccountId") ?? "",
+      reference: formData.get("reference") ?? "",
+    });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid submission." };
+  }
+
   const found = await loadPayableLease(session.user.id, leaseId);
   if (!found) return { error: "Lease not found." };
-
-  const amountCentavos = pesosToCentavos(found.amountDue);
-  if (amountCentavos <= 0) {
+  if (found.amountDue <= 0) {
     return { error: "You have no outstanding balance to pay." };
   }
 
-  const referenceNumber = randomUUID();
-  const origin = appUrl();
-  const returnPath = `${origin}/portal/pay-rent/${leaseId}/card`;
-
-  let checkout;
-  try {
-    checkout = await createCheckoutSession({
-      amountCentavos,
-      lineItemName: `Rent & utilities — ${found.propertyName} Unit ${found.unitName}`,
-      description: `Statement balance for ${found.propertyName}, Unit ${found.unitName}`,
-      referenceNumber,
-      successUrl: `${returnPath}?status=success`,
-      cancelUrl: `${returnPath}?status=cancel`,
-    });
-  } catch (error) {
-    console.error("[paymongo] could not create checkout session", error);
-    return { error: "Could not start the card payment. Please try again." };
+  // Only the landlord's own active accounts can be named as the destination —
+  // a forged id must never point the verification queue at another landlord's
+  // account. `loadPayableLease` already filtered to the active ones.
+  const destination = found.bankAccounts.find(
+    (account) => account.id === parsed.data.bankAccountId,
+  );
+  if (!destination) {
+    return { error: "Choose one of the landlord's bank accounts." };
   }
 
-  await db.insert(paymentCheckouts).values({
-    leaseId,
-    tenantAccountId: session.user.id,
-    provider: "paymongo",
-    providerRef: checkout.id,
-    referenceNumber,
-    amountCentavos,
-    status: "pending",
-  });
+  const notes = bankTransferPaymentNote(parsed.data.reference);
+  const [existing] = await db
+    .select({ id: payments.id, status: payments.status })
+    .from(payments)
+    .where(and(eq(payments.leaseId, leaseId), eq(payments.notes, notes)))
+    .limit(1);
 
-  revalidatePath(`/portal/pay-rent/${leaseId}/card`);
-  return { url: checkout.checkoutUrl };
+  if (existing?.status === "rejected") {
+    // The landlord turned this reference away — resubmitting reopens it for
+    // review at the current balance (and can point at a different account)
+    // instead of stacking a second payment.
+    await db
+      .update(payments)
+      .set({
+        status: "pending",
+        reviewedAt: null,
+        amount: found.amountDue.toFixed(2),
+        paidDate: todayPaymentDate(),
+        bankAccountId: destination.id,
+      })
+      .where(eq(payments.id, existing.id));
+  } else if (!existing) {
+    const ok = await recordRentPayment({
+      leaseId,
+      userId: session.user.id,
+      amount: found.amountDue,
+      method: "bank_transfer",
+      notes,
+      status: "pending",
+      bankAccountId: destination.id,
+    });
+    if (!ok) return { error: "Payment could not be recorded." };
+  }
+  // An already-pending or already-verified row is the idempotent path: the
+  // submission is on file, nothing new to write.
+
+  revalidatePath("/portal");
+  // The landlord's finance page and dashboard income KPI read payments.
+  revalidatePath("/finance");
+  revalidatePath("/dashboard");
+  redirect("/portal?payment=success");
 }

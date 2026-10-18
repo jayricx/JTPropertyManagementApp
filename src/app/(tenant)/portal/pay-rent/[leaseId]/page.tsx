@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { LandmarkIcon, SmartphoneIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,14 +11,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { loadPayableLease } from "@/lib/portal-lease";
-import { cardCheckoutEnabled } from "@/lib/payments/provider";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 /**
  * Rent-payment method chooser. GCash (send money + reference number) is
- * always available; card checkout joins it once a payment gateway is
- * configured. With no gateway, this page simply forwards to the GCash flow so
- * the tenant never sees a dead option.
+ * always available; bank transfer joins it once the landlord has saved an
+ * account under Settings. With a single method there is no choice to make,
+ * so the page forwards straight to it and the tenant never sees a
+ * pointless menu.
  */
 export default async function PayRentPage({
   params,
@@ -31,9 +32,9 @@ export default async function PayRentPage({
   const lease = await loadPayableLease(session.user.id, leaseId);
   if (!lease) redirect("/portal");
 
-  // With no gateway configured there is no choice to make — go straight to the
-  // GCash flow, exactly as before card checkout existed.
-  if (!cardCheckoutEnabled()) {
+  // Only GCash is configured — go straight to it, exactly as before bank
+  // transfer existed.
+  if (lease.bankAccounts.length === 0) {
     redirect(`/portal/pay-rent/${leaseId}/gcash`);
   }
 
@@ -78,13 +79,17 @@ export default async function PayRentPage({
           ) : (
             <div className="grid gap-3">
               <Button render={<Link href={`/portal/pay-rent/${leaseId}/gcash`} />}>
+                <SmartphoneIcon />
                 Pay with GCash
               </Button>
               <Button
                 variant="outline"
-                render={<Link href={`/portal/pay-rent/${leaseId}/card`} />}
+                render={
+                  <Link href={`/portal/pay-rent/${leaseId}/bank-transfer`} />
+                }
               >
-                Pay with card
+                <LandmarkIcon />
+                Pay with bank transfer
               </Button>
             </div>
           )}

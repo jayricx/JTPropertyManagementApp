@@ -359,7 +359,6 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "cash",
   "check",
   "bank_transfer",
-  "card",
   "gcash",
   "other",
 ]);
@@ -372,10 +371,10 @@ export const paymentTypeEnum = pgEnum("payment_type", [
 ]);
 
 /**
- * Tenant GCash submissions land as `pending` and only count as income once
- * the landlord verifies them against their GCash history (`paid`), or are
- * turned away (`rejected`). Records the landlord enters themselves, manual
- * backfills, and gateway-settled card payments are `paid` from the start.
+ * Tenant GCash and bank-transfer submissions land as `pending` and only
+ * count as income once the landlord verifies them against their wallet or
+ * bank statement (`paid`), or are turned away (`rejected`). Records the
+ * landlord enters themselves and manual backfills are `paid` from the start.
  */
 export const paymentStatusEnum = pgEnum("payment_status", [
   "pending",
@@ -400,12 +399,17 @@ export const payments = pgTable(
     status: paymentStatusEnum("status").default("paid").notNull(),
     /** When the landlord approved or turned the payment away (null while pending). */
     reviewedAt: timestamp("reviewed_at", { mode: "date" }),
+    /** Bank account ID if payment method is bank_transfer. */
+    bankAccountId: uuid("bank_account_id").references(() => bankAccounts.id, {
+      onDelete: "set null",
+    }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
     index("payments_user_id_idx").on(t.userId),
     index("payments_lease_id_idx").on(t.leaseId),
+    index("payments_bank_account_id_idx").on(t.bankAccountId),
   ],
 );
 
@@ -449,58 +453,9 @@ export const charges = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Card checkout sessions. A hosted gateway page (PayMongo) charges the
-// tenant's card; the gateway's webhook — not the browser — confirms payment.
-// `providerRef` is the gateway's own session id and is unique, which makes
-// webhook handling idempotent: a replayed event can only ever match one row.
-// `paymentId` links to the payments row written once the charge succeeds, so
-// a payment is never recorded twice.
+// Expenses — the landlord's own spending per property (repairs, taxes,
+// utilities they cover), kept separate from tenant-facing charges.
 // ---------------------------------------------------------------------------
-
-export const checkoutStatusEnum = pgEnum("checkout_status", [
-  "pending",
-  "paid",
-  "expired",
-  "failed",
-]);
-
-export const paymentCheckouts = pgTable(
-  "payment_checkouts",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    leaseId: uuid("lease_id")
-      .notNull()
-      .references(() => leases.id, { onDelete: "cascade" }),
-    // The tenant account that opened the checkout (the payer).
-    tenantAccountId: uuid("tenant_account_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    provider: varchar("provider", { length: 32 }).default("paymongo").notNull(),
-    /** The gateway's checkout session id. */
-    providerRef: varchar("provider_ref", { length: 255 }).notNull(),
-    /**
-     * Our own reference, sent to the gateway and echoed back on its webhook.
-     * A stable fallback match key if the session id ever changes shape.
-     */
-    referenceNumber: varchar("reference_number", { length: 64 }).notNull(),
-    /** The amount in centavos, as the gateway expects integers. */
-    amountCentavos: integer("amount_centavos").notNull(),
-    status: checkoutStatusEnum("status").default("pending").notNull(),
-    /** The payments row created once the charge is confirmed. */
-    paymentId: uuid("payment_id").references(() => payments.id, {
-      onDelete: "set null",
-    }),
-    paidAt: timestamp("paid_at", { mode: "date" }),
-    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
-  },
-  (t) => [
-    unique("payment_checkouts_provider_ref_key").on(t.providerRef),
-    unique("payment_checkouts_reference_number_key").on(t.referenceNumber),
-    index("payment_checkouts_lease_id_idx").on(t.leaseId),
-    index("payment_checkouts_tenant_account_id_idx").on(t.tenantAccountId),
-  ],
-);
 
 export const expenseCategoryEnum = pgEnum("expense_category", [
   "repair",
@@ -790,6 +745,35 @@ export const notifications = pgTable(
   },
   (t) => [index("notifications_user_id_idx").on(t.userId)],
 );
+
+// ---------------------------------------------------------------------------
+// Bank accounts — landlord bank details shown to tenants for bank transfers.
+// Each landlord can add multiple accounts; tenants see active ones when
+// choosing bank transfer as payment method.
+// ---------------------------------------------------------------------------
+
+export const bankAccounts = pgTable(
+  "bank_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bankCode: varchar("bank_code", { length: 50 }).notNull(),
+    bankName: varchar("bank_name", { length: 255 }).notNull(),
+    accountNumber: varchar("account_number", { length: 50 }).notNull(),
+    accountName: varchar("account_name", { length: 255 }).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("bank_accounts_user_id_idx").on(t.userId),
+  ],
+);
+
+export type BankAccount = typeof bankAccounts.$inferSelect;
+export type NewBankAccount = typeof bankAccounts.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // Gamification — XP ledger (append-only) and one-time achievement unlocks.

@@ -16,12 +16,14 @@ export function gcashPaymentNote(reference: string): string {
 }
 
 /**
- * Note for a card rent payment settled through the gateway. The reference is
- * our own checkout reference, which is also the row's unique key — so a
- * replayed webhook can never write the same payment twice.
+ * Bank-transfer rent payments: the tenant sends rent from their own bank app
+ * to one of the landlord's accounts and submits the transaction reference;
+ * the landlord verifies it against their bank statement. Like the GCash note
+ * this doubles as the idempotency key, and `payments.bankAccountId` records
+ * which of the landlord's accounts the money went to.
  */
-export function cardPaymentNote(reference: string): string {
-  return `Card payment — Ref #${reference}`;
+export function bankTransferPaymentNote(reference: string): string {
+  return `Bank transfer — Ref #${reference}`;
 }
 
 /**
@@ -49,10 +51,15 @@ export interface RentPaymentInput {
   /** Free-text note; for GCash payments use `gcashPaymentNote(reference)`. */
   notes: string;
   /**
-   * `pending` for tenant GCash submissions awaiting the landlord's approval —
-   * no receipt is sent yet (the landlord's verification sends it). Defaults to
-   * `paid`: the landlord's own records and gateway-settled card payments need
-   * no approval.
+   * For bank transfers: which of the landlord's accounts the tenant sent the
+   * money to, so the landlord knows where to look when verifying.
+   */
+  bankAccountId?: string;
+  /**
+   * `pending` for tenant GCash or bank-transfer submissions awaiting the
+   * landlord's approval — no receipt is sent yet (the landlord's
+   * verification sends it). Defaults to `paid`: the landlord's own records
+   * need no approval.
    */
   status?: "pending" | "paid";
 }
@@ -118,10 +125,9 @@ async function emailReceipt(
 
 /**
  * Record a rent payment against a lease and email the tenant a receipt
- * (unless it is a `pending` GCash submission awaiting the landlord's
+ * (unless it is a `pending` tenant submission awaiting the landlord's
  * verification). Returns the new payment's id, or null when the lease doesn't
- * exist (callers treat that as failure). The id lets card-checkout webhooks
- * link the gateway session to the payment row they created.
+ * exist (callers treat that as failure).
  */
 export async function recordRentPayment(
   input: RentPaymentInput,
@@ -140,6 +146,7 @@ export async function recordRentPayment(
       type: "rent",
       status: input.status ?? "paid",
       notes: input.notes,
+      bankAccountId: input.bankAccountId ?? null,
     })
     .returning({ id: payments.id });
 

@@ -1,5 +1,4 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
-import { SmartphoneIcon } from "lucide-react";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
@@ -418,8 +417,7 @@ export default async function TenantPortalPage({
                 <Button
                   render={<Link href={`/portal/pay-rent/${active.id}`} />}
                 >
-                  <SmartphoneIcon />
-                  Pay {formatCurrency(amountDue)} with GCash
+                  Pay {formatCurrency(amountDue)}
                 </Button>
               ) : (
                 <p>
@@ -429,9 +427,9 @@ export default async function TenantPortalPage({
               )}
               <p>
                 Rent plus any electricity and water you&apos;ve used make up
-                your balance; pay it from your GCash app, then submit the
-                reference number. Your landlord verifies each submission
-                against their GCash history before it counts.
+                your balance; pay it by GCash or bank transfer, then submit
+                the reference number. Your landlord verifies each submission
+                against their wallet or bank statement before it counts.
               </p>
               {pendingTotal > 0 && (
                 <p className="font-medium text-amber-700 dark:text-amber-400">

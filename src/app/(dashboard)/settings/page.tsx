@@ -1,16 +1,18 @@
-import { eq } from "drizzle-orm";
-import { CreditCardIcon, KeyRoundIcon, MailIcon, SmartphoneIcon } from "lucide-react";
+import { desc, eq } from "drizzle-orm";
+import { KeyRoundIcon, LandmarkIcon, MailIcon, SmartphoneIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { users } from "@/db/schema";
+import { bankAccounts, users } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import { googleSignInEnabled } from "@/lib/auth-providers";
 import { emailDiagnostics } from "@/lib/email";
-import { cardCheckoutEnabled } from "@/lib/payments/provider";
-import { paymongoWebhookConfigured } from "@/lib/payments/paymongo";
 import { EmailTestForm } from "@/components/settings/email-test-form";
 import { GcashSettingsForm } from "@/components/settings/gcash-settings-form";
+import {
+  BankAccountsManager,
+  type BankAccountRow,
+} from "@/components/settings/bank-accounts-card";
 import { getPlanUsage } from "@/lib/plan-usage";
 import { PlanUsageMeter } from "@/components/plans/plan-usage-meter";
 import {
@@ -33,11 +35,19 @@ export default async function SettingsPage() {
     .from(users)
     .where(eq(users.id, session.user.id))
     .limit(1);
-  const usage = await getPlanUsage(session.user.id);
 
-  const cardEnabled = cardCheckoutEnabled();
-  const webhookConfigured = paymongoWebhookConfigured();
-  const webhookUrl = `${appUrl()}/api/payments/paymongo/webhook`;
+  const bankRows = await db
+    .select({
+      id: bankAccounts.id,
+      bankName: bankAccounts.bankName,
+      accountNumber: bankAccounts.accountNumber,
+      accountName: bankAccounts.accountName,
+    })
+    .from(bankAccounts)
+    .where(eq(bankAccounts.userId, session.user.id))
+    .orderBy(desc(bankAccounts.createdAt));
+
+  const usage = await getPlanUsage(session.user.id);
 
   const googleEnabled = googleSignInEnabled();
   const googleRedirectUrl = `${appUrl()}/api/auth/callback/google`;
@@ -87,44 +97,16 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CreditCardIcon className="size-5" /> Card payments
+            <LandmarkIcon className="size-5" /> Bank accounts
           </CardTitle>
           <CardDescription>
-            Let tenants pay rent by credit or debit card on PayMongo&apos;s
-            secure page.
-            {cardEnabled
-              ? " Card checkout is live."
-              : " Add a PayMongo secret key to turn this on."}
+            Shown to tenants who pay by bank transfer — they send rent to one
+            of these accounts from their own bank app and submit the reference
+            number for you to verify, just like GCash.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {cardEnabled ? (
-            <>
-              <p className="text-muted-foreground">
-                Register this webhook URL in your PayMongo dashboard (Developers
-                → Webhooks) so payments are confirmed and recorded
-                automatically:
-              </p>
-              <code className="block break-all rounded-md bg-muted px-3 py-2 text-xs">
-                {webhookUrl}
-              </code>
-              {!webhookConfigured && (
-                <p className="text-amber-600 dark:text-amber-500">
-                  Set <code>PAYMONGO_WEBHOOK_SECRET</code> to the signing secret
-                  from that webhook, or confirmation events will be rejected.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-muted-foreground">
-              Set <code>PAYMONGO_SECRET_KEY</code> in your environment to enable
-              card checkout. The GCash flow keeps working either way.
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Charges settle to your PayMongo account; each one appears in Finance
-            as a card rent payment.
-          </p>
+        <CardContent>
+          <BankAccountsManager accounts={bankRows as BankAccountRow[]} />
         </CardContent>
       </Card>
 

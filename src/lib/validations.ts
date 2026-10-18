@@ -340,7 +340,6 @@ export const paymentMethods = [
   "cash",
   "check",
   "bank_transfer",
-  "card",
   "gcash",
   "other",
 ] as const;
@@ -350,7 +349,6 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: "Cash",
   check: "Check",
   bank_transfer: "Bank transfer",
-  card: "Card",
   gcash: "GCash",
   other: "Other",
 };
@@ -467,6 +465,34 @@ export const paymentCreateSchema = z
   });
 export type PaymentCreateFormValues = z.input<typeof paymentCreateSchema>;
 export type PaymentCreateFormParsed = z.output<typeof paymentCreateSchema>;
+
+// ---------------------------------------------------------------------------
+// Bank accounts — the landlord's bank details shown to tenants who pay rent
+// by bank transfer. Same manual-verification shape as GCash: the tenant
+// sends money from their own bank app and submits the reference number.
+// ---------------------------------------------------------------------------
+
+export const bankAccountSchema = z
+  .object({
+    /** A `PHILIPPINE_BANKS` code, or the "other" sentinel for a typed name. */
+    bankCode: z.string().trim().min(1, "Choose a bank."),
+    /** Only read when `bankCode` is "other" — known banks use the catalog name. */
+    otherBankName: z.string().trim().max(255),
+    accountNumber: z
+      .string()
+      .trim()
+      .regex(
+        /^[0-9A-Za-z-]{4,34}$/,
+        "Enter a valid account number (4–34 letters, digits, or dashes).",
+      ),
+    accountName: z.string().trim().min(2, "Enter the account name.").max(255),
+  })
+  .refine((v) => v.bankCode !== "other" || v.otherBankName.length >= 2, {
+    message: "Enter the bank name.",
+    path: ["otherBankName"],
+  });
+export type BankAccountFormValues = z.input<typeof bankAccountSchema>;
+export type BankAccountFormParsed = z.output<typeof bankAccountSchema>;
 
 export const expenseCategories = [
   "repair",

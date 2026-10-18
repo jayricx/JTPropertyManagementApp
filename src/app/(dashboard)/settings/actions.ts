@@ -1,12 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { users } from "@/db/schema";
+import { bankAccounts, users } from "@/db/schema";
+import { bankDisplayName, isKnownBankCode } from "@/lib/banks";
 import { emailDiagnostics, emailShell, sendEmail } from "@/lib/email";
+import { bankAccountSchema } from "@/lib/validations";
+import { isUuid } from "@/lib/utils";
 
 /** `ok` lets the form show a saved state after a successful update. */
 export type ActionState = { error?: string; ok?: boolean } | null;
@@ -67,6 +70,81 @@ export async function saveGcashSettingsAction(
 
   revalidatePath("/settings");
   // The tenant pay-rent page reads these details.
+  revalidatePath("/portal");
+  return { ok: true };
+}
+
+/**
+ * Add a bank account tenants can transfer rent to. The bank's catalog name
+ * is stored for known banks; "other" stores the landlord's own text so the
+ * tenant always sees a plain bank name. Accounts appear on the bank-transfer
+ * pay-rent page immediately.
+ */
+export async function createBankAccountAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (session.user.role !== "landlord") {
+    return { error: "Only landlord accounts have settings." };
+  }
+
+  const parsed = bankAccountSchema.safeParse({
+    bankCode: formData.get("bankCode") ?? "",
+    otherBankName: formData.get("otherBankName") ?? "",
+    accountNumber: formData.get("accountNumber") ?? "",
+    accountName: formData.get("accountName") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid bank account." };
+  }
+  // Reject a bank code that's neither in the catalog nor the Other sentinel —
+  // otherwise a forged value would be stored verbatim as the bank name.
+  if (!isKnownBankCode(parsed.data.bankCode)) {
+    return { error: "Choose a bank from the list." };
+  }
+
+  await db.insert(bankAccounts).values({
+    userId: session.user.id,
+    bankCode: parsed.data.bankCode,
+    bankName: bankDisplayName(parsed.data.bankCode, parsed.data.otherBankName),
+    accountNumber: parsed.data.accountNumber,
+    accountName: parsed.data.accountName,
+  });
+
+  revalidatePath("/settings");
+  // The tenant pay-rent pages read these accounts.
+  revalidatePath("/portal");
+  return { ok: true };
+}
+
+/**
+ * Remove one of the landlord's own bank accounts (scoped to the signed-in
+ * user, so an id from another landlord's account can never match). The
+ * account disappears from the tenant's bank-transfer page immediately; any
+ * payment already submitted keeps its record of where the money went.
+ */
+export async function deleteBankAccountAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (session.user.role !== "landlord") {
+    return { error: "Only landlord accounts have settings." };
+  }
+
+  const id = String(formData.get("id") ?? "");
+  if (!isUuid(id)) return { error: "Bank account not found." };
+
+  await db
+    .delete(bankAccounts)
+    .where(
+      and(eq(bankAccounts.id, id), eq(bankAccounts.userId, session.user.id)),
+    );
+
+  revalidatePath("/settings");
   revalidatePath("/portal");
   return { ok: true };
 }
