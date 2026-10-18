@@ -3,6 +3,7 @@ import { signatureVerificationLabels } from "@/lib/signatures";
 import {
   type ContractRecord,
   type ContractSignature,
+  contractPartyWords,
   formatPeso,
   renderContractSections,
   shortHash,
@@ -26,6 +27,9 @@ export function ContractDocument({
 }) {
   const sections = renderContractSections(contract.terms);
   const { terms } = contract;
+  // The signature blocks have to name the parties the same way the clauses
+  // above them do, which for an older snapshot is still Landlord/Tenant.
+  const words = contractPartyWords(terms);
   const bothSigned = signatures.landlord && signatures.tenant;
   const signedOn = bothSigned
     ? [signatures.landlord!.signedAt, signatures.tenant!.signedAt]
@@ -87,7 +91,7 @@ export function ContractDocument({
               }
             >
               <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {role === "landlord" ? "Landlord" : "Tenant"}
+                {role === "landlord" ? words.lessor : words.lessee}
                 {role === viewerRole && " · you"}
               </p>
               {signature ? (
@@ -143,8 +147,9 @@ export function ContractDocument({
           useful than pretending the template is authoritative.
         */}
         <p>
-          These terms were prepared by the landlord and have not been reviewed by
-          a lawyer. Document version {contract.version}, content{" "}
+          These terms were prepared by the {words.lessor.toLowerCase()} and have
+          not been reviewed by a lawyer. Document version {contract.version},
+          content{" "}
           <code className="font-mono">{shortHash(contract.contentHash)}</code>.
         </p>
       </footer>

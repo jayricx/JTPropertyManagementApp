@@ -34,6 +34,7 @@ import {
 } from "@/lib/validations";
 import {
   activeContract,
+  CURRENT_CONTRACT_RENDER_VERSION,
   deliverContract,
   draftTermsFromLease,
   hashContractTerms,
@@ -627,7 +628,13 @@ export async function saveContractAction(
   // Only the clauses are editable — the parties, premises, term and figures
   // stay exactly as they were copied off the lease.
   const existing = JSON.parse(contract.terms) as Record<string, unknown>;
-  const merged: Record<string, unknown> = { ...existing };
+  const merged: Record<string, unknown> = {
+    ...existing,
+    // Nothing can be sent without passing through here or the draft step, so a
+    // draft edited today renders with today's wording. A contract already sent
+    // is frozen and never reaches this code.
+    renderVersion: CURRENT_CONTRACT_RENDER_VERSION,
+  };
   for (const [key, value] of Object.entries(parsed.data)) {
     if (value !== undefined) merged[key] = value;
   }

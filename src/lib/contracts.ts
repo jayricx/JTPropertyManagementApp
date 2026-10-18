@@ -43,6 +43,19 @@ export const contractStatusLabels: Record<ContractStatus, string> = {
 const OPEN_STATUSES: ContractStatus[] = ["draft", "sent", "viewed"];
 
 /**
+ * Which party wording a snapshot was drafted with.
+ *
+ * The prose is part of what a signature attests to, so it is versioned *inside*
+ * the snapshot rather than decided at render time: contracts drafted from now
+ * on say Lessor/Lessee, while anything created earlier keeps the
+ * Landlord/Tenant wording it was signed under. Editing the renderer must never
+ * silently rewrite an executed contract — the stored hash would no longer
+ * describe the text on screen.
+ */
+export const LEGACY_CONTRACT_RENDER_VERSION = 1;
+export const CURRENT_CONTRACT_RENDER_VERSION = 2;
+
+/**
  * The frozen snapshot. Everything the contract says comes from here — never
  * from a live join — which is what makes it a record rather than a view.
  */
@@ -70,6 +83,11 @@ export interface ContractTerms {
   repairsNote: string;
   terminationNote: string;
   additionalTerms: string;
+  /**
+   * The party wording this snapshot renders with. Absent on snapshots written
+   * before the wording was versioned, which are read as the legacy version.
+   */
+  renderVersion: number;
 }
 
 export const EMPTY_CONTRACT_TERMS: ContractTerms = {
@@ -93,7 +111,23 @@ export const EMPTY_CONTRACT_TERMS: ContractTerms = {
   repairsNote: "",
   terminationNote: "",
   additionalTerms: "",
+  // The default is the *legacy* wording on purpose: a snapshot that predates
+  // this field must render the words it was signed under, and a new draft sets
+  // the current version explicitly when it is built.
+  renderVersion: LEGACY_CONTRACT_RENDER_VERSION,
 };
+
+/** The words the contract uses for each party, by snapshot version. */
+export interface ContractPartyWords {
+  lessor: string;
+  lessee: string;
+}
+
+export function contractPartyWords(terms: ContractTerms): ContractPartyWords {
+  return terms.renderVersion >= CURRENT_CONTRACT_RENDER_VERSION
+    ? { lessor: "Lessor", lessee: "Lessee" }
+    : { lessor: "Landlord", lessee: "Tenant" };
+}
 
 export interface ContractSection {
   heading: string;
@@ -138,27 +172,28 @@ function line(address: string, city: string): string {
  * "not specified" filler.
  */
 export function renderContractSections(terms: ContractTerms): ContractSection[] {
+  const words = contractPartyWords(terms);
   // A lease counterparty has to be identifiable, not just reachable — so a
   // trading name replaces the personal one when there is one, and the person
-  // behind it is named anyway so there's never an unaccountable "the Landlord".
+  // behind it is named anyway so there's never an unaccountable "the Lessor".
   const trading = terms.landlordBusinessName.trim();
   const personal = terms.landlordName.trim();
   const landlord =
     trading && trading.toLowerCase() !== personal.toLowerCase()
       ? `${trading}, through ${personal}`
-      : trading || personal || "the landlord";
+      : trading || personal || `the ${words.lessor}`;
 
   const sections: ContractSection[] = [
     {
       heading: "The parties",
       paragraphs: [
-        `This agreement is made between ${landlord} (the "Landlord"), of ${terms.landlordEmail || "no email on record"}, and ${terms.tenantName || "the tenant"} (the "Tenant"), of ${terms.tenantEmail || "no email on record"}.`,
+        `This agreement is made between ${landlord} (the "${words.lessor}"), of ${terms.landlordEmail || "no email on record"}, and ${terms.tenantName || `the ${words.lessee}`} (the "${words.lessee}"), of ${terms.tenantEmail || "no email on record"}.`,
       ],
     },
     {
       heading: "The premises",
       paragraphs: [
-        `The Landlord rents to the Tenant the unit known as ${terms.unitName || "—"} at ${terms.propertyName || "—"}, ${line(terms.propertyAddress, terms.propertyCity)}.`,
+        `The ${words.lessor} rents to the ${words.lessee} the unit known as ${terms.unitName || "—"} at ${terms.propertyName || "—"}, ${line(terms.propertyAddress, terms.propertyCity)}.`,
       ],
     },
     {
@@ -172,18 +207,18 @@ export function renderContractSections(terms: ContractTerms): ContractSection[] 
     {
       heading: "Rent",
       paragraphs: [
-        `The Tenant shall pay the Landlord a monthly rent of ${formatPeso(terms.rentAmount)}, payable on the date the Landlord requests each month through GCash or bank transfer.`,
-        "The Landlord shall record each payment in RentBase-PH, and the Tenant's receipt is the payment history shown in their portal.",
+        `The ${words.lessee} shall pay the ${words.lessor} a monthly rent of ${formatPeso(terms.rentAmount)}, payable on the date the ${words.lessor} requests each month through GCash or bank transfer.`,
+        `The ${words.lessor} shall record each payment in RentBase-PH, and the ${words.lessee}'s receipt is the payment history shown in their portal.`,
       ],
     },
     {
       heading: "Security deposit",
       paragraphs: terms.depositTerms
         ? [
-            `The Tenant shall pay a security deposit of ${formatPeso(terms.depositAmount)}. ${terms.depositTerms}`,
+            `The ${words.lessee} shall pay a security deposit of ${formatPeso(terms.depositAmount)}. ${terms.depositTerms}`,
           ]
         : [
-            `The Tenant shall pay a security deposit of ${formatPeso(terms.depositAmount)}.`,
+            `The ${words.lessee} shall pay a security deposit of ${formatPeso(terms.depositAmount)}.`,
           ],
     },
   ];
@@ -785,6 +820,8 @@ export async function draftTermsFromLease(leaseId: string): Promise<ContractTerm
 
   return {
     ...EMPTY_CONTRACT_TERMS,
+    // A snapshot drafted now renders with the current party wording.
+    renderVersion: CURRENT_CONTRACT_RENDER_VERSION,
     landlordName: row.landlordName ?? "",
     landlordBusinessName: row.landlordBusinessName ?? "",
     landlordEmail: row.landlordEmail,

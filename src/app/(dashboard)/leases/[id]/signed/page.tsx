@@ -159,7 +159,7 @@ export default async function SignedLeasePage({ params }: SignedLeasePageProps) 
             return (
               <div key={role} className="space-y-2">
                 <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  {role === "landlord" ? "Landlord" : "Tenant"}
+                  {role === "landlord" ? "Lessor" : "Lessee"}
                 </p>
                 <SignatureDisplay signature={signature} />
                 <div className="border-t pt-2 text-sm">
