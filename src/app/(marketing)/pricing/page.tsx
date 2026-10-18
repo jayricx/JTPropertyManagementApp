@@ -37,10 +37,9 @@ const TIER_FEATURES = {
     "Receipt photos",
   ],
   business: [
-    "Up to 100 units",
+    "Unlimited units",
     "Everything in Pro",
     "Accounting sync (coming soon)",
-    "E-signature (coming soon)",
     "AI insights (coming soon)",
   ],
 } as const satisfies Record<(typeof PLAN_TIERS)[number], readonly string[]>;
