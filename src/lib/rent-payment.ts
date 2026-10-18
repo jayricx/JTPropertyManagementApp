@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { leases, payments, properties, tenants, units } from "@/db/schema";
+import { documents, leases, payments, properties, tenants, units } from "@/db/schema";
+import { sanitizeFileName } from "@/lib/attachments";
 import { sendPaymentReceipt } from "@/lib/email";
 import type { PaymentMethod } from "@/lib/validations";
 import { formatCurrency } from "@/lib/utils";
@@ -24,6 +25,64 @@ export function gcashPaymentNote(reference: string): string {
  */
 export function bankTransferPaymentNote(reference: string): string {
   return `Bank transfer — Ref #${reference}`;
+}
+
+/**
+ * Receipt photos a tenant attaches when submitting a payment. Kept in
+ * `documents` like every other attachment — bytes in the DB for now — and
+ * linked by `payment_id` so the landlord's Finance queue can show the photo
+ * beside the reference being verified.
+ *
+ * Optional and best-effort: a failed or oversized photo must never swallow the
+ * payment the tenant just submitted, so problems are logged and swallowed.
+ * Returns how many were stored.
+ */
+export async function attachPaymentReceipts(input: {
+  paymentId: string;
+  leaseId: string;
+  userId: string;
+  files: File[];
+}): Promise<number> {
+  let stored = 0;
+  for (const file of input.files) {
+    try {
+      const id = crypto.randomUUID();
+      const bytes = Buffer.from(await file.arrayBuffer());
+      await db.insert(documents).values({
+        id,
+        userId: input.userId,
+        paymentId: input.paymentId,
+        // Carrying the lease keeps the download route's existing rule intact:
+        // the uploader always sees it, and anyone who can reach the lease can.
+        leaseId: input.leaseId,
+        name: sanitizeFileName(file.name),
+        url: `/api/documents/${id}`,
+        type: file.type,
+        sizeBytes: bytes.byteLength,
+        data: bytes.toString("base64"),
+      });
+      stored++;
+    } catch (error) {
+      console.error("[rent-payment] receipt photo failed", file.name, error);
+    }
+  }
+  return stored;
+}
+
+/** The photos attached to a payment, oldest first. */
+export async function paymentReceipts(
+  paymentId: string,
+): Promise<{ id: string; name: string; url: string; type: string | null }[]> {
+  return db
+    .select({
+      id: documents.id,
+      name: documents.name,
+      url: documents.url,
+      type: documents.type,
+    })
+    .from(documents)
+    .where(eq(documents.paymentId, paymentId))
+    .orderBy(asc(documents.createdAt));
 }
 
 /**

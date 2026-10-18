@@ -1,5 +1,5 @@
 import { asc, desc, eq, inArray, or } from "drizzle-orm";
-import { Coins, Receipt, Wallet } from "lucide-react";
+import { Coins, PaperclipIcon, Receipt, Wallet } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { expenses, leases, payments, properties, tenants, units } from "@/db/schema";
@@ -35,6 +35,7 @@ import {
   normalizePropertyFilter,
   sanitizePropertySelection,
 } from "@/lib/property-filter";
+import { paymentReceipts } from "@/lib/rent-payment";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   expenseCategoryLabels,
@@ -293,9 +294,11 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           <CardHeader>
             <CardTitle>Awaiting verification</CardTitle>
             <CardDescription>
-              GCash payments submitted by tenants. Check each reference against
-              your GCash history and verify it — until then it is not counted
-              as income and doesn&apos;t reduce the tenant&apos;s balance.
+              GCash and bank-transfer payments submitted by tenants. Check each
+              reference against your own app history — the receipt photo, when
+              one was attached, is right here — and verify it. Until then it is
+              not counted as income and doesn&apos;t reduce the tenant&apos;s
+              balance.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -323,6 +326,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {p.notes ?? "—"}
+                      <ReceiptLinks paymentId={p.id} />
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(p.amount)}
@@ -576,5 +580,32 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Proof-of-payment photos attached to a submission. Only shown for rows the
+ * landlord can review, and only when a photo was actually sent — most tenants
+ * just type the reference.
+ */
+async function ReceiptLinks({ paymentId }: { paymentId: string }) {
+  const receipts = await paymentReceipts(paymentId);
+  if (receipts.length === 0) return null;
+
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-2">
+      {receipts.map((r) => (
+        <a
+          key={r.id}
+          href={r.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 text-xs font-medium text-foreground hover:bg-muted"
+        >
+          <PaperclipIcon className="size-3" />
+          {receipts.length > 1 ? `Receipt ${r.name}` : "View receipt"}
+        </a>
+      ))}
+    </span>
   );
 }

@@ -47,11 +47,14 @@ export async function GET(
     allowed = allowed || (link?.accountId === userId && link.accountId !== null);
     if (!allowed && doc.unitId) allowed = await canAccessUnit(userId, doc.unitId);
   } else if (doc.leaseId) {
-    allowed = await canAccessLease(userId, doc.leaseId);
+    // `||` rather than `=`: whoever uploaded it keeps access even when they
+    // aren't a landlord — a tenant attaching a payment receipt must be able to
+    // read their own receipt back.
+    allowed = allowed || (await canAccessLease(userId, doc.leaseId));
   } else if (doc.unitId) {
-    allowed = await canAccessUnit(userId, doc.unitId);
+    allowed = allowed || (await canAccessUnit(userId, doc.unitId));
   } else if (doc.propertyId) {
-    allowed = await canAccessProperty(userId, doc.propertyId);
+    allowed = allowed || (await canAccessProperty(userId, doc.propertyId));
   }
   if (!allowed) return new Response("Forbidden", { status: 403 });
 

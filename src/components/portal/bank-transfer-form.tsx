@@ -1,14 +1,13 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState, useTransition } from "react";
+import type { FormEvent } from "react";
 import { LandmarkIcon } from "lucide-react";
-import {
-  confirmBankTransferPaymentAction,
-  type ActionState,
-} from "@/app/(tenant)/portal/actions";
+import { confirmBankTransferPaymentAction } from "@/app/(tenant)/portal/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ReceiptPhotoInput } from "@/components/portal/receipt-photo-input";
 import {
   Select,
   SelectContent,
@@ -20,9 +19,9 @@ import type { PayableBankAccount } from "@/lib/portal-lease";
 
 /**
  * Submit a bank-transfer payment: which of the landlord's accounts received
- * the money, and the transaction reference from the bank confirmation
- * screen. The submission records as pending — the landlord verifies it
- * against their bank statement before it counts.
+ * the money, the transaction reference from the bank confirmation screen, and
+ * optionally a photo of that confirmation. The submission records as pending —
+ * the landlord verifies it against their bank statement before it counts.
  */
 export function BankTransferForm({
   leaseId,
@@ -31,18 +30,29 @@ export function BankTransferForm({
   leaseId: string;
   accounts: PayableBankAccount[];
 }) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    confirmBankTransferPaymentAction,
-    null,
-  );
-  // The Select is controlled so the chosen account can ride along in a
-  // hidden input — Base UI's Select doesn't submit a form field on its own.
   const [bankAccountId, setBankAccountId] = useState("");
+  const [reference, setReference] = useState("");
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("leaseId", leaseId);
+      formData.set("bankAccountId", bankAccountId);
+      formData.set("reference", reference);
+      if (receipt) formData.set("receipt", receipt);
+      const result = await confirmBankTransferPaymentAction(null, formData);
+      // Success redirects to the portal; only an error comes back here.
+      if (result?.error) setError(result.error);
+    });
+  }
 
   return (
-    <form action={formAction} className="space-y-4">
-      <input type="hidden" name="leaseId" value={leaseId} />
-      <input type="hidden" name="bankAccountId" value={bankAccountId} />
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="bank-account">Account you sent to</Label>
         <Select
@@ -74,16 +84,21 @@ export function BankTransferForm({
           required
           maxLength={32}
           autoComplete="off"
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
         />
         <p className="text-xs text-muted-foreground">
           Found on your bank&apos;s confirmation screen, right after you send
           the money. The payment shows as <strong>awaiting verification</strong>{" "}
           until your landlord checks it.
         </p>
-        {state?.error && (
-          <p className="text-sm font-medium text-destructive">{state.error}</p>
-        )}
       </div>
+
+      <ReceiptPhotoInput onChange={setReceipt} busy={pending} />
+
+      {error && (
+        <p className="text-sm font-medium text-destructive">{error}</p>
+      )}
       <Button type="submit" disabled={pending}>
         <LandmarkIcon />
         {pending ? "Submitting..." : "I've paid — submit reference"}

@@ -16,6 +16,7 @@ import {
 import { loadPayableLease } from "@/lib/portal-lease";
 import {
   bankTransferPaymentNote,
+  attachPaymentReceipts,
   gcashPaymentNote,
   recordRentPayment,
   todayPaymentDate,
@@ -195,6 +196,43 @@ export async function createTenantRequestAction(
 // Rent payments
 // ---------------------------------------------------------------------------
 
+/** One receipt photo may be attached, up to the shared media size limit. */
+const MAX_RECEIPTS = 1;
+
+/**
+ * Pull the optional receipt photo out of a payment submission and check it is
+ * really an image. A missing photo is fine — plenty of tenants would rather
+ * just type the reference — but a bad one is reported rather than silently
+ * dropped, so nobody thinks they sent evidence they didn't.
+ */
+function receiptPhotos(formData: FormData): File[] {
+  const picked = formData
+    .getAll("receipt")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (picked.length === 0) return [];
+
+  if (picked.length > MAX_RECEIPTS) {
+    throw new Error("Only one receipt photo per payment.");
+  }
+  const file = picked[0];
+  const check = validateMediaFile(file);
+  if (!check.ok) throw new Error(check.error);
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Attach a photo of the receipt, not another file type.");
+  }
+  return [file];
+}
+
+/** Turn a thrown receipt error into the form's error state. */
+function receiptError(error: unknown): ActionState {
+  return {
+    error:
+      error instanceof Error
+        ? error.message
+        : "That receipt photo couldn't be uploaded.",
+  };
+}
+
 /**
  * "Pay rent" via GCash — the tenant sends rent from their own GCash app to
  * the landlord's wallet, then submits the reference number from the
@@ -245,6 +283,14 @@ export async function confirmGcashPaymentAction(
     .where(and(eq(payments.leaseId, leaseId), eq(payments.notes, notes)))
     .limit(1);
 
+  // Optional receipt photos, attached to whichever row ends up on file.
+  let receipts: File[];
+  try {
+    receipts = receiptPhotos(formData);
+  } catch (error) {
+    return receiptError(error);
+  }
+
   if (existing?.status === "rejected") {
     // The landlord turned this reference away — resubmitting reopens it for
     // review at the current balance instead of stacking a second payment.
@@ -257,8 +303,14 @@ export async function confirmGcashPaymentAction(
         paidDate: todayPaymentDate(),
       })
       .where(eq(payments.id, existing.id));
+    await attachPaymentReceipts({
+      paymentId: existing.id,
+      leaseId,
+      userId: session.user.id,
+      files: receipts,
+    });
   } else if (!existing) {
-    const ok = await recordRentPayment({
+    const paymentId = await recordRentPayment({
       leaseId,
       userId: session.user.id,
       amount: found.amountDue,
@@ -266,7 +318,13 @@ export async function confirmGcashPaymentAction(
       notes,
       status: "pending",
     });
-    if (!ok) return { error: "Payment could not be recorded." };
+    if (!paymentId) return { error: "Payment could not be recorded." };
+    await attachPaymentReceipts({
+      paymentId,
+      leaseId,
+      userId: session.user.id,
+      files: receipts,
+    });
   }
   // An already-pending or already-verified row is the idempotent path: the
   // submission is on file, nothing new to write.
@@ -339,6 +397,14 @@ export async function confirmBankTransferPaymentAction(
     .where(and(eq(payments.leaseId, leaseId), eq(payments.notes, notes)))
     .limit(1);
 
+  // Optional receipt photo — a bank app confirmation is the easiest proof.
+  let receipts: File[];
+  try {
+    receipts = receiptPhotos(formData);
+  } catch (error) {
+    return receiptError(error);
+  }
+
   if (existing?.status === "rejected") {
     // The landlord turned this reference away — resubmitting reopens it for
     // review at the current balance (and can point at a different account)
@@ -353,8 +419,14 @@ export async function confirmBankTransferPaymentAction(
         bankAccountId: destination.id,
       })
       .where(eq(payments.id, existing.id));
+    await attachPaymentReceipts({
+      paymentId: existing.id,
+      leaseId,
+      userId: session.user.id,
+      files: receipts,
+    });
   } else if (!existing) {
-    const ok = await recordRentPayment({
+    const paymentId = await recordRentPayment({
       leaseId,
       userId: session.user.id,
       amount: found.amountDue,
@@ -363,7 +435,13 @@ export async function confirmBankTransferPaymentAction(
       status: "pending",
       bankAccountId: destination.id,
     });
-    if (!ok) return { error: "Payment could not be recorded." };
+    if (!paymentId) return { error: "Payment could not be recorded." };
+    await attachPaymentReceipts({
+      paymentId,
+      leaseId,
+      userId: session.user.id,
+      files: receipts,
+    });
   }
   // An already-pending or already-verified row is the idempotent path: the
   // submission is on file, nothing new to write.

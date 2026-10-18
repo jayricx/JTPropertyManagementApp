@@ -687,6 +687,12 @@ export const documents = pgTable(
       () => maintenanceRequests.id,
       { onDelete: "cascade" },
     ),
+    // A photo of the transfer receipt a tenant submitted with a GCash or bank
+    // payment, so the landlord can verify it against their app history. Kept
+    // when the payment is deleted — the evidence outlives the record.
+    paymentId: uuid("payment_id").references(() => payments.id, {
+      onDelete: "set null",
+    }),
     name: varchar("name", { length: 255 }).notNull(),
     /** Canonical path for DB-stored files; an object-storage key later. */
     url: varchar("url", { length: 1000 }).notNull(),
@@ -700,6 +706,7 @@ export const documents = pgTable(
     index("documents_lease_id_idx").on(t.leaseId),
     index("documents_property_id_idx").on(t.propertyId),
     index("documents_maintenance_request_id_idx").on(t.maintenanceRequestId),
+    index("documents_payment_id_idx").on(t.paymentId),
   ],
 );
 
