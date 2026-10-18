@@ -88,6 +88,11 @@ email/password is the only method.
 
 See `PLAN.md` for the full plan. Next milestones:
 
+- **Marketing site** — landing page rewritten around the Philippine angle, plus
+  `/guides` (starting with how to split a utility bill among tenants), `/faq`,
+  and `sitemap.xml` / `robots.txt`
+- Persona landing pages (`/for/boarding-house`, `/for/condo-owner`, `/for/property-manager`)
+- Privacy Policy + Terms (currently missing — needed before taking money)
 - Properties & units CRUD with photo uploads
 - Tenants & leases management
 - Income/expense tracking + reports
