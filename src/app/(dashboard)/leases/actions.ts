@@ -33,6 +33,7 @@ import {
 } from "@/lib/validations";
 import {
   activeContract,
+  deliverContract,
   draftTermsFromLease,
   hashContractTerms,
   signContract,
@@ -643,8 +644,14 @@ export async function saveContractAction(
 /**
  * Hand the contract to the tenant. This freezes it: from here the wording can
  * only change by starting a new version.
+ *
+ * Sending also emails it. "Sent" that means "visible in a portal the tenant may
+ * never open" was how this failed silently the first time; the email is the
+ * thing that actually reaches them, so it's not a separate opt-in step.
  */
-export async function issueContractAction(contractId: string): Promise<{ error?: string }> {
+export async function issueContractAction(
+  contractId: string,
+): Promise<{ error?: string; warning?: string }> {
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
   if (!isUuid(contractId)) return { error: "That contract could not be found." };
@@ -672,10 +679,56 @@ export async function issueContractAction(contractId: string): Promise<{ error?:
     .set({ status: "sent", issuedAt: new Date(), issuedBy: session.user.id })
     .where(eq(leaseContracts.id, contractId));
 
+  const delivery = await deliverContract(contractId);
+
   revalidatePath(`/leases/${contract.leaseId}/contract`);
   revalidatePath(`/leases/${contract.leaseId}/edit`);
   revalidatePath("/portal");
-  return {};
+  // The contract is issued either way — a mail failure is worth shouting about,
+  // not worth un-issuing over.
+  return delivery.ok ? {} : { warning: delivery.problem ?? "The email could not be sent." };
+}
+
+/**
+ * Email the contract again with a fresh signing link.
+ *
+ * The token is rotated, so the newest email is the only one that works. That's
+ * the point when someone resends because the first never arrived, but it does
+ * mean an older copy of the email stops working — worth saying out loud in the
+ * confirm step.
+ */
+export async function resendContractAction(
+  contractId: string,
+): Promise<{ error?: string; warning?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (!isUuid(contractId)) return { error: "That contract could not be found." };
+
+  const [contract] = await db
+    .select({
+      id: leaseContracts.id,
+      leaseId: leaseContracts.leaseId,
+      status: leaseContracts.status,
+    })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  if (!contract) return { error: "That contract could not be found." };
+
+  const owned = await assertContractLease(session.user.id, contract.leaseId);
+  if ("error" in owned) return { error: owned.error };
+
+  if (contract.status === "draft") {
+    return { error: "Send this contract to the tenant first." };
+  }
+  if (contract.status === "superseded" || contract.status === "voided") {
+    return { error: "This version is no longer active. Prepare a new one." };
+  }
+
+  const delivery = await deliverContract(contractId);
+
+  revalidatePath(`/leases/${contract.leaseId}/contract`);
+  return delivery.ok ? {} : { warning: delivery.problem ?? "The email could not be sent." };
 }
 
 /** Withdraw a contract that hasn't been signed by both parties. */

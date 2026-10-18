@@ -24,6 +24,8 @@ const ACTIVE_COOKIE = "rb_active_portfolio";
 export interface PortfolioSummary {
   id: string;
   name: string;
+  /** Trading name for contracts, when the owner has set one. */
+  businessName: string | null;
   role: PortfolioRole;
   propertyCount: number;
 }
@@ -37,6 +39,7 @@ export const portfoliosForUser = cache(async (userId: string) => {
     .select({
       id: portfolios.id,
       name: portfolios.name,
+      businessName: portfolios.businessName,
       role: portfolioMembers.role,
       createdAt: portfolios.createdAt,
     })
@@ -95,7 +98,15 @@ export async function activePortfolio(userId: string) {
   if (!id) return null;
   const summaries = await listPortfolioSummaries(userId);
   const match = summaries.find((r) => r.id === id);
-  return match ? { id, name: match.name, role: match.role, propertyCount: match.propertyCount } : null;
+  return match
+    ? {
+        id,
+        name: match.name,
+        businessName: match.businessName,
+        role: match.role,
+        propertyCount: match.propertyCount,
+      }
+    : null;
 }
 
 /** Manage tier: owners and co-owners (viewers excluded). */
@@ -134,6 +145,7 @@ export async function listPortfolioSummaries(
     .select({
       id: portfolios.id,
       name: portfolios.name,
+      businessName: portfolios.businessName,
       role: portfolioMembers.role,
       propertyCount:
         sql<number>`(select count(*)::int from properties pr where pr.portfolio_id = ${portfolios.id})`,

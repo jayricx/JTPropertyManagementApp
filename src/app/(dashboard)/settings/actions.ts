@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { bankAccounts, users } from "@/db/schema";
+import { bankAccounts, portfolios, users } from "@/db/schema";
 import { bankDisplayName, isKnownBankCode } from "@/lib/banks";
 import { emailDiagnostics, emailShell, sendEmail } from "@/lib/email";
 import { bankAccountSchema } from "@/lib/validations";
@@ -37,6 +37,55 @@ const gcashSettingsSchema = z.object({
     ),
   gcashName: z.string().trim().max(255),
 });
+
+const businessNameSchema = z.object({
+  businessName: z.string().trim().max(200, "That name is too long."),
+});
+
+/**
+ * The trading name this landlord contracts under. It replaces the personal
+ * name on lease contracts, which is why only the portfolio *owner* may set it:
+ * this names who is entering the agreement, and a co-owner shouldn't be able
+ * to rewrite that on contracts they help prepare.
+ *
+ * Existing contracts are untouched — their terms are frozen at issue, so
+ * changing this only affects contracts issued from now on.
+ */
+export async function saveBusinessNameAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const parsed = businessNameSchema.safeParse({
+    businessName: formData.get("businessName") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid name." };
+  }
+
+  const owned = await db
+    .select({ id: portfolios.id })
+    .from(portfolios)
+    .where(eq(portfolios.ownerUserId, session.user.id))
+    .limit(1);
+  if (!owned.length) {
+    return { error: "Only the portfolio owner can set a business name." };
+  }
+
+  await db
+    .update(portfolios)
+    .set({
+      businessName: parsed.data.businessName || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(portfolios.id, owned[0].id));
+
+  revalidatePath("/settings");
+  revalidatePath("/leases");
+  return { ok: true };
+}
 
 /**
  * Save the landlord's GCash wallet details — the destination tenants are

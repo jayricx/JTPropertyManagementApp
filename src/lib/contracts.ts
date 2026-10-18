@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
@@ -47,6 +47,8 @@ const OPEN_STATUSES: ContractStatus[] = ["draft", "sent", "viewed"];
 export interface ContractTerms {
   // --- copied from the lease at issue time ---
   landlordName: string;
+  /** Trading name, when the portfolio has one; replaces the personal name. */
+  landlordBusinessName: string;
   landlordEmail: string;
   tenantName: string;
   tenantEmail: string;
@@ -70,6 +72,7 @@ export interface ContractTerms {
 
 export const EMPTY_CONTRACT_TERMS: ContractTerms = {
   landlordName: "",
+  landlordBusinessName: "",
   landlordEmail: "",
   tenantName: "",
   tenantEmail: "",
@@ -133,11 +136,21 @@ function line(address: string, city: string): string {
  * "not specified" filler.
  */
 export function renderContractSections(terms: ContractTerms): ContractSection[] {
+  // A lease counterparty has to be identifiable, not just reachable — so a
+  // trading name replaces the personal one when there is one, and the person
+  // behind it is named anyway so there's never an unaccountable "the Landlord".
+  const trading = terms.landlordBusinessName.trim();
+  const personal = terms.landlordName.trim();
+  const landlord =
+    trading && trading.toLowerCase() !== personal.toLowerCase()
+      ? `${trading}, through ${personal}`
+      : trading || personal || "the landlord";
+
   const sections: ContractSection[] = [
     {
       heading: "The parties",
       paragraphs: [
-        `This agreement is made between ${terms.landlordName || "the landlord"} (the "Landlord"), of ${terms.landlordEmail || "no email on record"}, and ${terms.tenantName || "the tenant"} (the "Tenant"), of ${terms.tenantEmail || "no email on record"}.`,
+        `This agreement is made between ${landlord} (the "Landlord"), of ${terms.landlordEmail || "no email on record"}, and ${terms.tenantName || "the tenant"} (the "Tenant"), of ${terms.tenantEmail || "no email on record"}.`,
       ],
     },
     {
@@ -376,6 +389,194 @@ export async function effectiveSignatures(
 }
 
 // ---------------------------------------------------------------------------
+// The emailed signing link
+// ---------------------------------------------------------------------------
+
+/**
+ * How long an emailed link stays usable. Long enough that a tenant who
+ * misplaces the first email isn't stuck, short enough that a link forwarded to
+ * the wrong person eventually dies on its own.
+ */
+export const CONTRACT_LINK_DAYS = 30;
+
+/**
+ * Mint a fresh signing link. The plaintext is returned for the email and never
+ * stored; only its sha256 goes on the row, so a database dump can't be used to
+ * sign contracts. Every send rotates the token, which means the most recent
+ * email is the only live one — the correct behaviour when someone resends
+ * because the first never arrived.
+ */
+export async function issueAccessToken(
+  contractId: string,
+): Promise<{ token: string; expiresAt: Date }> {
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(
+    Date.now() + CONTRACT_LINK_DAYS * 24 * 60 * 60 * 1000,
+  );
+  await db
+    .update(leaseContracts)
+    .set({ accessTokenHash: hashToken(token), accessExpiresAt: expiresAt })
+    .where(eq(leaseContracts.id, contractId));
+  return { token, expiresAt };
+}
+
+export function hashToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+export interface TokenResult {
+  contract: ContractRecord;
+  /** False once the link has aged out; the document is still readable. */
+  linkValid: boolean;
+  /** Why the link can't be used, if it can't. */
+  problem: "expired" | "superseded" | "voided" | null;
+}
+
+/**
+ * Resolve an emailed link. A contract that has been superseded or voided is
+ * deliberately still *found* — the tenant should be told the truth about what
+ * happened rather than shown a broken page — but `problem` marks it as no
+ * longer signable.
+ */
+export async function resolveAccessToken(token: string): Promise<TokenResult | null> {
+  if (!token || token.length < 20 || token.length > 200) return null;
+  const [row] = await db
+    .select()
+    .from(leaseContracts)
+    .where(eq(leaseContracts.accessTokenHash, hashToken(token)))
+    .limit(1);
+  if (!row) return null;
+
+  const contract = toRecord(row);
+  const expired =
+    row.accessExpiresAt !== null && row.accessExpiresAt.getTime() < Date.now();
+  const problem =
+    contract.status === "superseded"
+      ? "superseded"
+      : contract.status === "voided"
+        ? "voided"
+        : expired
+          ? "expired"
+          : null;
+
+  return {
+    contract,
+    linkValid: problem === null,
+    problem,
+  };
+}
+
+/**
+ * Record the outcome of a send attempt.
+ *
+ * `lastSendError` exists because "we emailed it" and "it arrived" are
+ * different claims, and the landlord has no way to tell them apart otherwise.
+ * A transport that isn't configured, or a recipient the provider refuses, is
+ * written here and shown in the UI instead of failing silently.
+ */
+export async function recordSend(
+  contractId: string,
+  outcome: { error: string | null },
+): Promise<void> {
+  await db
+    .update(leaseContracts)
+    .set({
+      lastSentAt: new Date(),
+      sendCount: sql`${leaseContracts.sendCount} + 1`,
+      lastSendError: outcome.error,
+    })
+    .where(eq(leaseContracts.id, contractId));
+}
+
+/** Set up so a send can be reported honestly; called before the transport runs. */
+export async function contractDelivery(contractId: string) {
+  const [row] = await db
+    .select({
+      sendCount: leaseContracts.sendCount,
+      lastSentAt: leaseContracts.lastSentAt,
+      lastSendError: leaseContracts.lastSendError,
+    })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  return {
+    sendCount: row?.sendCount ?? 0,
+    lastSentAt: row?.lastSentAt ?? null,
+    lastSendError: row?.lastSendError ?? null,
+  };
+}
+
+export interface DeliveryOutcome {
+  ok: boolean;
+  /** Set when the send did not reach anyone — shown verbatim to the landlord. */
+  problem: string | null;
+  /** True when no transport is configured and the mail was only logged. */
+  loggedOnly: boolean;
+}
+
+/**
+ * Email the contract and mint its signing link, in that order — the link has
+ * to exist before the mail that carries it, and a failure to send must not
+ * leave the landlord believing a tenant has it.
+ *
+ * Best-effort by design: a provider outage should not roll back an issued
+ * contract, so the failure is recorded and reported rather than thrown.
+ */
+export async function deliverContract(contractId: string): Promise<DeliveryOutcome> {
+  const [row] = await db
+    .select({
+      id: leaseContracts.id,
+      status: leaseContracts.status,
+      version: leaseContracts.version,
+      terms: leaseContracts.terms,
+    })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  if (!row) return { ok: false, problem: "That contract could not be found.", loggedOnly: false };
+
+  const terms = parseContractTerms(row.terms);
+  const recipient = terms.tenantEmail.trim();
+  if (!recipient) {
+    await recordSend(contractId, { error: "This tenant has no email address on file." });
+    return {
+      ok: false,
+      problem: "This tenant has no email address on file.",
+      loggedOnly: false,
+    };
+  }
+
+  const { token, expiresAt } = await issueAccessToken(contractId);
+  const { sendContractEmail, appOrigin } = await import("@/lib/email");
+
+  const result = await sendContractEmail({
+    to: recipient,
+    tenantName: terms.tenantName || "there",
+    landlordLabel:
+      terms.landlordBusinessName.trim() || terms.landlordName.trim() || "Your landlord",
+    propertyLine: [terms.propertyName, terms.unitName ? `Unit ${terms.unitName}` : ""]
+      .filter(Boolean)
+      .join(", "),
+    contractUrl: `${appOrigin()}/contract/${token}`,
+    linkDays: Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)),
+    version: row.version,
+  });
+
+  if (!result.delivered) {
+    // "No transport configured" is the local-dev case, not a failure to alarm
+    // anyone about — but it still has to be visible, because on a deployed app
+    // it means the tenant got nothing.
+    const problem =
+      result.reason ?? "The email provider didn't accept the message.";
+    await recordSend(contractId, { error: problem });
+    return { ok: false, problem, loggedOnly: true };
+  }
+
+  await recordSend(contractId, { error: null });
+  return { ok: true, problem: null, loggedOnly: false };
+}
+
+// ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
 
@@ -545,6 +746,7 @@ export async function draftTermsFromLease(leaseId: string): Promise<ContractTerm
       // payout details and the "your landlord" label already resolve — a
       // co-tenant who prepares the contract doesn't become the counterparty.
       landlordName: users.name,
+      landlordBusinessName: portfolios.businessName,
       landlordEmail: users.email,
     })
     .from(leases)
@@ -562,6 +764,7 @@ export async function draftTermsFromLease(leaseId: string): Promise<ContractTerm
   return {
     ...EMPTY_CONTRACT_TERMS,
     landlordName: row.landlordName ?? "",
+    landlordBusinessName: row.landlordBusinessName ?? "",
     landlordEmail: row.landlordEmail,
     tenantName: `${row.tenantFirst} ${row.tenantLast}`.trim(),
     tenantEmail: row.tenantEmail ?? "",

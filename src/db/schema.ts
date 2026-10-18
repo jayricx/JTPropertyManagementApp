@@ -157,6 +157,15 @@ export const portfolios = pgTable(
     ownerUserId: uuid("owner_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /**
+     * The trading name the landlord contracts under — "Santos Property
+     * Holdings" rather than "Jayric Tumon". It appears on lease contracts in
+     * place of the personal name, which matters because on a lease the
+     * counterparty has to be identifiable rather than merely the account
+     * holder. Portfolio-scoped, not per-user, so co-owners see one consistent
+     * name, and edited only by the owner because it names who is contracting.
+     */
+    businessName: varchar("business_name", { length: 200 }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
   },
@@ -420,6 +429,21 @@ export const leaseContracts = pgTable(
     tenantSignedAt: timestamp("tenant_signed_at", { mode: "date" }),
     completedAt: timestamp("completed_at", { mode: "date" }),
     voidedAt: timestamp("voided_at", { mode: "date" }),
+    /**
+     * The emailed signing link. Only the hash is stored — the plaintext token
+     * exists in the sent email and nowhere else, so a database leak doesn't
+     * hand out live signing links. Rotated on every send, so the newest email
+     * is the only one that works.
+     */
+    accessTokenHash: varchar("access_token_hash", { length: 64 }),
+    accessExpiresAt: timestamp("access_expires_at", { mode: "date" }),
+    lastSentAt: timestamp("last_sent_at", { mode: "date" }),
+    sendCount: integer("send_count").default(0).notNull(),
+    /**
+     * Why the last send didn't arrive, if it didn't. The landlord needs to see
+     * this: "sent" with no delivery and no error is the worst possible outcome.
+     */
+    lastSendError: text("last_send_error"),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [

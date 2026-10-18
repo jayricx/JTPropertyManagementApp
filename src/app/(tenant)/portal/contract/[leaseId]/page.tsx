@@ -107,7 +107,10 @@ export default async function TenantContractPage({
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Your lease contract</h1>
           <p className="text-muted-foreground">
-            From {contract.terms.landlordName || "your landlord"}
+            From{" "}
+            {contract.terms.landlordBusinessName ||
+              contract.terms.landlordName ||
+              "your landlord"}
           </p>
         </div>
         <Badge variant={completed ? "default" : "secondary"}>

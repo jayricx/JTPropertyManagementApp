@@ -4,10 +4,11 @@ import { eq } from "drizzle-orm";
 import { AlertTriangleIcon, FileTextIcon, PrinterIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, units } from "@/db/schema";
+import { leases, tenants, units } from "@/db/schema";
 import { ContractDocument } from "@/components/leases/contract-document";
 import {
   ContractEditor,
+  ContractResendButton,
   ContractSendButton,
   ContractStartButton,
   ContractVoidButton,
@@ -27,6 +28,7 @@ import { canManageUnit } from "@/lib/access";
 import {
   activeContract,
   completedContract,
+  contractDelivery,
   contractDrift,
   contractHistory,
   contractStatusLabels,
@@ -35,7 +37,7 @@ import {
   formatLongDate,
 } from "@/lib/contracts";
 import { signContractAsLandlordAction } from "@/app/(dashboard)/leases/actions";
-import { isUuid } from "@/lib/utils";
+import { formatDate, isUuid } from "@/lib/utils";
 
 interface ContractPageProps {
   params: Promise<{ id: string }>;
@@ -81,7 +83,7 @@ export default async function LeaseContractPage({
   // Fall back to the signed contract so a landlord who has nothing in flight
   // still sees the executed version rather than an empty page.
   const shown = active ?? signed;
-  const [signatures, drift, unitRow] = await Promise.all([
+  const [signatures, drift, unitRow, tenantRow, delivery] = await Promise.all([
     shown ? effectiveSignatures(id, shown) : Promise.resolve({ landlord: null, tenant: null }),
     contractDrift(id, signed),
     db
@@ -90,6 +92,14 @@ export default async function LeaseContractPage({
       .where(eq(units.id, lease.unitId))
       .limit(1)
       .then((rows) => rows[0]),
+    db
+      .select({ email: tenants.email })
+      .from(leases)
+      .innerJoin(tenants, eq(tenants.id, leases.tenantId))
+      .where(eq(leases.id, id))
+      .limit(1)
+      .then((rows) => rows[0]?.email ?? null),
+    shown ? contractDelivery(shown.id) : Promise.resolve(null),
   ]);
 
   const isDraft = shown?.status === "draft";
@@ -202,12 +212,30 @@ export default async function LeaseContractPage({
                   <ContractSendButton
                     contractId={shown.id}
                     contractHref={`/leases/${id}/contract`}
+                    tenantEmail={tenantRow}
                   />
                   <ContractVoidButton contractId={shown.id} />
                 </div>
               </CardContent>
             ) : (
               <CardContent className="space-y-3">
+                {delivery && delivery.sendCount > 0 && (
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p>
+                      Emailed {delivery.sendCount}{" "}
+                      {delivery.sendCount === 1 ? "time" : "times"}
+                      {delivery.lastSentAt
+                        ? ` · last sent ${formatDate(delivery.lastSentAt)}`
+                        : ""}
+                      {tenantRow ? ` · ${tenantRow}` : ""}
+                    </p>
+                    {delivery.lastSendError && (
+                      <p className="font-medium text-destructive">
+                        The last send didn&apos;t arrive: {delivery.lastSendError}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3">
                   {canSign && (
                     <SignatureDialog
@@ -230,7 +258,13 @@ export default async function LeaseContractPage({
                     />
                   )}
                   {shown.status !== "completed" && (
-                    <ContractVoidButton contractId={shown.id} />
+                    <>
+                      <ContractResendButton
+                        contractId={shown.id}
+                        tenantEmail={tenantRow}
+                      />
+                      <ContractVoidButton contractId={shown.id} />
+                    </>
                   )}
                   {shown.status === "completed" && (
                     <Button

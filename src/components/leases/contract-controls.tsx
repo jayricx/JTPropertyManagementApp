@@ -2,13 +2,14 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SendIcon, Trash2Icon } from "lucide-react";
+import { MailIcon, SendIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { ContractFormState } from "@/app/(dashboard)/leases/actions";
 import {
   createContractAction,
   issueContractAction,
+  resendContractAction,
   saveContractAction,
   voidContractAction,
 } from "@/app/(dashboard)/leases/actions";
@@ -49,10 +50,13 @@ export function ContractStartButton({ leaseId }: { leaseId: string }) {
 export function ContractSendButton({
   contractId,
   contractHref,
+  tenantEmail,
 }: {
   contractId: string;
   /** Where the read-only version lives, for the confirm step's link. */
   contractHref: string;
+  /** Shown in the confirmation so the address can't be a surprise. */
+  tenantEmail: string | null;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -67,9 +71,16 @@ export function ContractSendButton({
       setConfirming(false);
       if (result.error) {
         setError(result.error);
+      } else if (result.warning) {
+        // The contract is out there either way — but the tenant has not been
+        // told, and saying "sent" here would be a lie.
+        toast.warning("Contract issued, but the email didn't go out", {
+          description: `${result.warning} It's in their portal, and you can resend.`,
+        });
+        router.refresh();
       } else {
         toast.success("Contract sent", {
-          description: "It's now in your tenant's portal, waiting to be read and signed.",
+          description: `Emailed to ${tenantEmail || "your tenant"} with a link to read and sign it.`,
         });
         router.refresh();
       }
@@ -83,9 +94,13 @@ export function ContractSendButton({
       {confirming ? (
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-sm">
-            Sending freezes this wording. You won&apos;t be able to edit it
-            afterwards — changes go on a new version, which the tenant signs
-            again.
+            Sending freezes this wording and emails it to{" "}
+            <strong>{tenantEmail || "your tenant"}</strong>. You won&apos;t be
+            able to edit it afterwards — changes go on a new version, which the
+            tenant signs again.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            The email carries a link they can use without making an account.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" onClick={handle} disabled={pending}>
@@ -114,6 +129,86 @@ export function ContractSendButton({
         <Button onClick={() => setConfirming(true)} disabled={pending}>
           <SendIcon />
           Send to tenant
+        </Button>
+      )}
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Send the contract email again, with a new signing link.
+ *
+ * Reports the outcome honestly — including when the provider refused it. A
+ * silent resend is how "I resent it and they still say they got nothing"
+ * happens.
+ */
+export function ContractResendButton({
+  contractId,
+  tenantEmail,
+}: {
+  contractId: string;
+  tenantEmail: string | null;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handle() {
+    setError(null);
+    setPending(true);
+    try {
+      const result = await resendContractAction(contractId);
+      setConfirming(false);
+      if (result.error) {
+        setError(result.error);
+      } else if (result.warning) {
+        toast.error("The email still didn't go out", {
+          description: result.warning,
+        });
+        router.refresh();
+      } else {
+        toast.success("Contract resent", {
+          description: `Emailed to ${tenantEmail || "your tenant"}.`,
+        });
+        router.refresh();
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {confirming ? (
+        <div className="rounded-lg border bg-muted/40 p-3">
+          <p className="text-sm">
+            Send the lease again to{" "}
+            <strong>{tenantEmail || "your tenant"}</strong>? This issues a new
+            signing link and{" "}
+            <strong>invalidates the previous one</strong> — any older email
+            they still have will stop working.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" onClick={handle} disabled={pending}>
+              <MailIcon />
+              {pending ? "Sending..." : "Resend"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="outline" onClick={() => setConfirming(true)} disabled={pending}>
+          <MailIcon />
+          Resend to tenant
         </Button>
       )}
       {error && <p className="text-sm font-medium text-destructive">{error}</p>}

@@ -226,14 +226,14 @@ export default async function TenantPortalPage({
     ? await Promise.all([
         getLeaseSignatures(active.id),
         db
-          .select({ name: users.name })
+          .select({ name: users.name, businessName: portfolios.businessName })
           .from(properties)
           // The portfolio owner is who the tenant deals with.
           .innerJoin(portfolios, eq(properties.portfolioId, portfolios.id))
           .innerJoin(users, eq(portfolios.ownerUserId, users.id))
           .where(eq(properties.id, active.propertyId))
           .limit(1)
-          .then((rows) => rows[0]?.name ?? "Your landlord"),
+          .then((rows) => rows[0]?.businessName || rows[0]?.name || "Your landlord"),
       ])
     : [null, "Your landlord"];
 

@@ -21,12 +21,14 @@ export function EmailTestForm({
   sharedSender,
   configured,
   appUrl,
+  appUrlLooksLocal,
 }: {
   transport: "gmail" | "resend" | "log";
   sender: string;
   sharedSender: boolean;
   configured: boolean;
   appUrl: string;
+  appUrlLooksLocal: boolean;
 }) {
   const transportLabel =
     transport === "gmail"
@@ -92,6 +94,17 @@ export function EmailTestForm({
           Using Resend&apos;s shared sender, which only delivers to the address
           on your Resend account. Any other recipient is refused. Verify a domain
           and set <code>EMAIL_FROM</code> to reach everyone else.
+        </p>
+      )}
+
+      {/* Every emailed link is built from this host, so a wrong one breaks
+          contract signing for all recipients at once — and the failure shows up
+          as "the link does nothing" in someone else's inbox. */}
+      {appUrlLooksLocal && configured && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          Links inside emails point at <code>{appUrl}</code>, which only works on
+          your own machine. Set <code>AUTH_URL</code> to this deployment&apos;s
+          public address, or tenants will receive links that open nothing.
         </p>
       )}
 

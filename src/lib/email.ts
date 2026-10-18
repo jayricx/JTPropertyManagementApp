@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { Resend } from "resend";
+import { appUrl, appUrlLooksLocal } from "@/lib/app-url";
 
 /**
  * Email delivery. Two transports are supported and chosen automatically:
@@ -76,10 +77,9 @@ const usingSharedSender = TRANSPORT === "resend" && !explicitFrom;
 let warnedAboutSharedSender = false;
 let warnedAboutGmailFrom = false;
 
-// Same blank-means-unset rule as EMAIL_FROM: a bare AUTH_URL would build links
-// that point nowhere.
-const appUrl = (process.env.AUTH_URL ?? "").trim();
-const APP_URL = appUrl || "http://localhost:3000";
+// The origin every emailed link points back to. Resolved once, through the
+// shared helper, so emailed links and anything else absolute agree.
+const APP_URL = appUrl();
 
 /**
  * What the server is actually configured to send with. Surfaced on the
@@ -97,7 +97,17 @@ export function emailDiagnostics() {
     configured: TRANSPORT !== "log",
     /** The host that links inside emails point back to. */
     appUrl: APP_URL,
+    /** True when that host is localhost — the links won't open for a recipient. */
+    appUrlLooksLocal: appUrlLooksLocal(),
   };
+}
+
+/**
+ * The public origin, for links that have to work outside a browser session —
+ * the emailed contract link is the first thing that needs one.
+ */
+export function appOrigin(): string {
+  return APP_URL;
 }
 
 let resendClient: Resend | null = null;
@@ -470,6 +480,50 @@ export async function sendPortalInviteEmail(
        <p style="color:#6b7280;font-size:13px;">The button works once and expires in ${r.expiresInHours} hours. After that, you sign in with your email and password.</p>
        <p style="color:#6b7280;font-size:13px;">If the button doesn't work, paste this link into your browser:<br>${setupUrl}</p>
        <p style="color:#6b7280;font-size:13px;">Didn't expect this? You can ignore it — nothing has changed.</p>`,
+    ),
+  });
+}
+
+export interface ContractEmail {
+  to: string;
+  tenantName: string;
+  landlordLabel: string;
+  propertyLine: string;
+  contractUrl: string;
+  /** How long the link stays usable, so the tenant isn't surprised by it dying. */
+  linkDays: number;
+  /** Version number, so a resend is visibly the same document. */
+  version: number;
+}
+
+/**
+ * The lease contract, sent to a tenant who has to be able to read and sign it.
+ *
+ * Written for someone who will not read a paragraph: the address of the home,
+ * what they're agreeing to pay, one button, and nothing else to do but click.
+ * The link works without a portal account on purpose — a tenant who has never
+ * set a password would simply never get to the contract otherwise, and this is
+ * the one document that must not depend on them finding the app.
+ */
+export async function sendContractEmail(r: ContractEmail): Promise<SendResult> {
+  const tenantLabel = escapeHtml(r.tenantName);
+  const landlordLabel = escapeHtml(r.landlordLabel);
+  const propertyLabel = escapeHtml(r.propertyLine);
+  const contractUrl = escapeHtml(r.contractUrl);
+
+  return sendEmail({
+    to: r.to,
+    subject: `${landlordLabel} sent you your lease for ${propertyLabel}`,
+    text: `Hi ${r.tenantName},\n\n${r.landlordLabel} has sent you your lease agreement for ${r.propertyLine}.\n\nRead it and sign here — it takes a moment, and you don't need an account:\n${r.contractUrl}\n\nThe link works for ${r.linkDays} days. After that, ask your landlord to send it again.\n\n— RentBase-PH`,
+    html: emailShell(
+      "Your lease agreement",
+      `<p>Hi ${tenantLabel},</p>
+       <p>${landlordLabel} has sent you the lease agreement for <strong>${propertyLabel}</strong>.</p>
+       <p>Read it through, then sign at the end. Typing your name or drawing your mark both count as a legal signature.</p>
+       <p><a href="${contractUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;">Read and sign my lease</a></p>
+       <p style="color:#6b7280;font-size:13px;">You don't need an account — the link works straight from this email, for ${r.linkDays} days. If it stops working, just ask your landlord to send it again.</p>
+       <p style="color:#6b7280;font-size:13px;">If the button doesn't work, paste this link into your browser:<br>${contractUrl}</p>
+       <p style="color:#6b7280;font-size:13px;">This is version ${r.version} of your contract.</p>`,
     ),
   });
 }

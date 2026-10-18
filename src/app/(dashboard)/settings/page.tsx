@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import {
+  BuildingIcon,
   KeyRoundIcon,
   LandmarkIcon,
   MailIcon,
@@ -15,6 +16,7 @@ import { appUrl } from "@/lib/app-url";
 import { googleSignInEnabled } from "@/lib/auth-providers";
 import { emailDiagnostics } from "@/lib/email";
 import { EmailTestForm } from "@/components/settings/email-test-form";
+import { BusinessNameForm } from "@/components/settings/business-name-form";
 import { GcashSettingsForm } from "@/components/settings/gcash-settings-form";
 import {
   BankAccountsManager,
@@ -133,6 +135,32 @@ export default async function SettingsPage() {
           </p>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BuildingIcon className="size-5" /> Business name
+          </CardTitle>
+          <CardDescription>
+            Shown on lease contracts instead of your personal name, so the
+            counterparty is the business rather than the account holder. Leave
+            blank and contracts use your own name. Only the portfolio owner can
+            change this, and contracts already sent keep the name they were
+            signed with.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {portfolio && portfolio.role === "owner" ? (
+            <BusinessNameForm businessName={portfolio.businessName ?? ""} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {portfolio
+                ? "Ask the portfolio owner to set the business name."
+                : "No portfolio yet — create one by adding a property."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

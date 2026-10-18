@@ -31,6 +31,11 @@ interface SignatureDialogProps {
    * The two actions key off different form fields, so exactly one is posted.
    */
   contractId?: string;
+  /**
+   * The emailed signing link's token. Only present on the account-free
+   * `/contract/[token]` page, where it is the authorisation.
+   */
+  token?: string;
   /** Prefilled from the roster (landlord account name / tenant name). */
   defaultName: string;
   triggerLabel: string;
@@ -58,6 +63,7 @@ export function SignatureDialog({
   action,
   leaseId,
   contractId,
+  token,
   defaultName,
   triggerLabel,
   dialogTitle,
@@ -141,6 +147,7 @@ export function SignatureDialog({
         <form action={formAction} className="space-y-5">
           <input type="hidden" name="leaseId" value={leaseId} />
           {contractId && <input type="hidden" name="contractId" value={contractId} />}
+          {token && <input type="hidden" name="token" value={token} />}
           <input type="hidden" name="method" value={method} />
           <input type="hidden" name="drawnSignature" value={dataUrl} />
 
