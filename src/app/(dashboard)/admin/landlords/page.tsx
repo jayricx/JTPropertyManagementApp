@@ -26,7 +26,7 @@ import { landlordAccounts, planBreakdown, tenantAccountCount } from "@/lib/admin
 import { PLAN_PRICES } from "@/lib/plans";
 import { formatDate } from "@/lib/utils";
 
-export const metadata = { title: "Landlord accounts — RentBase-PH" };
+export const metadata = { title: "Landlord accounts — Renta-PH" };
 
 /**
  * Operator view of the landlord accounts and what they're on.

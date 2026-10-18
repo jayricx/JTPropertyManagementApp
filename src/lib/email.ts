@@ -13,8 +13,10 @@ import { appUrl, appUrlLooksLocal } from "@/lib/app-url";
  *    delivers only to the Resend account's own address.
  *
  * Gmail is preferred when both are configured because it has no domain
- * requirement. With neither (local development) emails are logged to the
- * server console instead of sent, so every flow stays testable.
+ * requirement. To override that and force Resend (or force Gmail, or suppress
+ * sending), set EMAIL_TRANSPORT. With neither configured (local development)
+ * emails are logged to the server console instead of sent, so every flow stays
+ * testable.
  */
 
 /** Google's SMTP endpoint, shared by Gmail and Google Workspace accounts. */
@@ -28,7 +30,7 @@ const GMAIL_PORT = 465;
  * recipient is refused. Replace EMAIL_FROM with an address on a verified
  * domain once you have one.
  */
-const SHARED_SENDER = "RentBase-PH <onboarding@resend.dev>";
+const SHARED_SENDER = "Renta-PH <notifications@renta-ph.net>";
 
 // Treat a blank or whitespace-only value as unset: an empty variable in
 // .env.local or the Vercel dashboard must not blank out the sender.
@@ -45,11 +47,29 @@ export type EmailTransport = "gmail" | "resend" | "log";
 const gmailConfigured = Boolean(gmailUser && gmailPassword);
 const resendConfigured = Boolean(resendKey);
 
-const TRANSPORT: EmailTransport = gmailConfigured
+/**
+ * Optional explicit transport. Without it the choice is automatic — Gmail
+ * first, then Resend, then log. That default quietly disables Resend whenever
+ * Gmail is also configured, so EMAIL_TRANSPORT exists to break the tie on
+ * purpose: `resend` to force Resend, `gmail` to force Gmail, `log` to suppress
+ * sending entirely (useful in tests). Anything else, including unset, falls
+ * back to the automatic choice.
+ */
+const requestedTransport = (process.env.EMAIL_TRANSPORT ?? "").trim().toLowerCase();
+const OVERRIDE: EmailTransport | null =
+  requestedTransport === "gmail" ||
+  requestedTransport === "resend" ||
+  requestedTransport === "log"
+    ? requestedTransport
+    : null;
+
+const AUTO_TRANSPORT: EmailTransport = gmailConfigured
   ? "gmail"
   : resendConfigured
     ? "resend"
     : "log";
+
+const TRANSPORT: EmailTransport = OVERRIDE ?? AUTO_TRANSPORT;
 
 /** Pull the bare address out of `Name <addr@host>` (or return the value). */
 function addressOf(value: string): string {
@@ -69,7 +89,7 @@ const FROM =
   TRANSPORT === "gmail"
     ? gmailFromMatches
       ? explicitFrom
-      : `RentBase-PH <${gmailUser}>`
+      : `Renta-PH <${gmailUser}>`
     : explicitFrom || SHARED_SENDER;
 
 const usingSharedSender = TRANSPORT === "resend" && !explicitFrom;
@@ -167,14 +187,14 @@ export function emailShell(title: string, bodyHtml: string): string {
   <body style="margin:0;padding:24px;background-color:#f4f5f7;font-family:Segoe UI,Helvetica,Arial,sans-serif;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
       <div style="background:linear-gradient(135deg,#064e3b,#10b981);padding:20px 24px;">
-        <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;">RentBase-PH</span>
+        <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;">Renta-PH</span>
       </div>
       <div style="padding:24px;color:#111827;font-size:15px;line-height:1.6;">
         <h1 style="margin:0 0 12px;font-size:18px;">${title}</h1>
         ${bodyHtml}
       </div>
       <div style="padding:16px 24px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">
-        Sent by RentBase-PH
+        Sent by Renta-PH
       </div>
     </div>
   </body>
@@ -313,7 +333,7 @@ export async function sendLeaseEndAlerts(
     await sendEmail({
       to: landlordEmail,
       subject: `Lease ending soon: ${tenantName} — ${unitName}`,
-      text: `Hi ${landlordName ?? "there"},\n\nThe lease for ${tenantName} at ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nMonthly rent: ₱${rentAmount}\n\nReview or renew the lease: ${leaseUrl}\n\n— RentBase-PH`,
+      text: `Hi ${landlordName ?? "there"},\n\nThe lease for ${tenantName} at ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nMonthly rent: ₱${rentAmount}\n\nReview or renew the lease: ${leaseUrl}\n\n— Renta-PH`,
       html: emailShell(
         "Lease ending soon",
         `<p>Hi ${escapeHtml(landlordName ?? "there")},</p>
@@ -330,7 +350,7 @@ export async function sendLeaseEndAlerts(
       await sendEmail({
         to: tenantEmail,
         subject: `Your lease ends on ${endDateText}`,
-        text: `Hi ${tenantName},\n\nThis is a reminder that your lease for ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nContact your landlord to discuss renewal or move-out arrangements.\n\n— RentBase-PH`,
+        text: `Hi ${tenantName},\n\nThis is a reminder that your lease for ${unitName} (${propertyName}) ends on ${endDateText} (${daysText}).\n\nContact your landlord to discuss renewal or move-out arrangements.\n\n— Renta-PH`,
         html: emailShell(
           "Your lease ends soon",
           `<p>Hi ${tenantLabel},</p>
@@ -365,7 +385,7 @@ export async function sendPaymentReceipt(r: PaymentReceipt): Promise<SendResult>
   return sendEmail({
     to: r.to,
     subject: `Payment received: ${r.amountText} rent`,
-    text: `Hi ${r.tenantName},\n\nWe received your rent payment of ${r.amountText} on ${dateText} for ${r.unitName} (${r.propertyName}).\n\nView your payment history: ${portalUrl}\n\n— RentBase-PH`,
+    text: `Hi ${r.tenantName},\n\nWe received your rent payment of ${r.amountText} on ${dateText} for ${r.unitName} (${r.propertyName}).\n\nView your payment history: ${portalUrl}\n\n— Renta-PH`,
     html: emailShell(
       "Payment received",
       `<p>Hi ${tenantLabel},</p>
@@ -407,7 +427,7 @@ export async function sendFeatureRequestUpdateEmail(
   return sendEmail({
     to: r.to,
     subject: `Your feature request: ${r.statusLabel}`,
-    text: `Hi${r.name ? ` ${r.name}` : ""},\n\nThere's an update on your feature request "${r.requestTitle}":\n\nStatus: ${r.statusLabel}${r.note ? `\n\n${r.note}` : ""}\n\nView it: ${feedbackUrl}\n\n— RentBase-PH`,
+    text: `Hi${r.name ? ` ${r.name}` : ""},\n\nThere's an update on your feature request "${r.requestTitle}":\n\nStatus: ${r.statusLabel}${r.note ? `\n\n${r.note}` : ""}\n\nView it: ${feedbackUrl}\n\n— Renta-PH`,
     html: emailShell(
       `Update on your request`,
       `<p>Hi${r.name ? ` ${escapeHtml(r.name)}` : ""},</p>
@@ -433,8 +453,8 @@ export async function sendVerificationCodeEmail(
 
   return sendEmail({
     to: r.to,
-    subject: `${r.code} is your RentBase-PH code`,
-    text: `${greeting}\n\nYour verification code is ${r.code}\n\nEnter it to finish creating your account. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign up, you can ignore this email — no account was created.\n\n— RentBase-PH`,
+    subject: `${r.code} is your Renta-PH code`,
+    text: `${greeting}\n\nYour verification code is ${r.code}\n\nEnter it to finish creating your account. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign up, you can ignore this email — no account was created.\n\n— Renta-PH`,
     html: emailShell(
       "Confirm your email",
       `<p>${greeting}</p>
@@ -442,7 +462,7 @@ export async function sendVerificationCodeEmail(
        <p style="font-size:32px;letter-spacing:10px;font-weight:700;margin:20px 0;color:#064e3b;">${codeLabel}</p>
        <p style="color:#6b7280;font-size:13px;">It works once and expires in ${r.expiresInMinutes} minutes.</p>
        <p style="color:#6b7280;font-size:13px;">If you didn't try to sign up, you can ignore this email — no account was created.</p>
-       <p><a href="${portalUrl}" style="font-size:13px;color:#6b7280;">Open RentBase-PH</a></p>`,
+       <p><a href="${portalUrl}" style="font-size:13px;color:#6b7280;">Open Renta-PH</a></p>`,
     ),
   });
 }
@@ -470,7 +490,7 @@ export async function sendPortalInviteEmail(
   return sendEmail({
     to: r.to,
     subject: `${escapeHtml(r.landlordName)} invited you to your tenant portal`,
-    text: `Hi ${r.tenantName},\n\n${r.landlordName} has set up your tenant portal, where you can see your lease, pay rent, and report repairs.\n\nChoose your password here — it takes a moment and works once:\n${r.setupUrl}\n\nOr sign in any time after that at:\n${portalUrl}\n\n— RentBase-PH`,
+    text: `Hi ${r.tenantName},\n\n${r.landlordName} has set up your tenant portal, where you can see your lease, pay rent, and report repairs.\n\nChoose your password here — it takes a moment and works once:\n${r.setupUrl}\n\nOr sign in any time after that at:\n${portalUrl}\n\n— Renta-PH`,
     html: emailShell(
       "You're invited to your tenant portal",
       `<p>Hi ${tenantLabel},</p>
@@ -509,7 +529,7 @@ export async function sendSignatureCodeEmail(
   return sendEmail({
     to: r.to,
     subject: `${r.code} is your lease signing code`,
-    text: `Hi ${r.name || "there"},\n\nYour lease signing code is ${r.code}.\n\nEnter it on the signing page to sign the lease for ${r.propertyLine} from ${r.landlordLabel}. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign, you can ignore this email — nothing has changed.\n\n— RentBase-PH`,
+    text: `Hi ${r.name || "there"},\n\nYour lease signing code is ${r.code}.\n\nEnter it on the signing page to sign the lease for ${r.propertyLine} from ${r.landlordLabel}. It works once and expires in ${r.expiresInMinutes} minutes.\n\nIf you didn't try to sign, you can ignore this email — nothing has changed.\n\n— Renta-PH`,
     html: emailShell(
       "Confirm it's you",
       `<p>Hi ${nameLabel},</p>
@@ -551,7 +571,7 @@ export async function sendContractEmail(r: ContractEmail): Promise<SendResult> {
   return sendEmail({
     to: r.to,
     subject: `${landlordLabel} sent you your lease for ${propertyLabel}`,
-    text: `Hi ${r.tenantName},\n\n${r.landlordLabel} has sent you your lease agreement for ${r.propertyLine}.\n\nRead it and sign here — it takes a moment, and you don't need an account:\n${r.contractUrl}\n\nThe link works for ${r.linkDays} days. After that, ask your landlord to send it again.\n\n— RentBase-PH`,
+    text: `Hi ${r.tenantName},\n\n${r.landlordLabel} has sent you your lease agreement for ${r.propertyLine}.\n\nRead it and sign here — it takes a moment, and you don't need an account:\n${r.contractUrl}\n\nThe link works for ${r.linkDays} days. After that, ask your landlord to send it again.\n\n— Renta-PH`,
     html: emailShell(
       "Your lease agreement",
       `<p>Hi ${tenantLabel},</p>
@@ -582,8 +602,8 @@ export async function sendPasswordResetEmail(
 
   return sendEmail({
     to: r.to,
-    subject: "Reset your RentBase-PH password",
-    text: `${greeting}\n\nUse the link below to choose a new password. It works once and expires in ${r.expiresInMinutes} minutes.\n\n${r.resetUrl}\n\nIf you didn't ask for this, you can ignore this email — nothing has changed.\n\n— RentBase-PH`,
+    subject: "Reset your Renta-PH password",
+    text: `${greeting}\n\nUse the link below to choose a new password. It works once and expires in ${r.expiresInMinutes} minutes.\n\n${r.resetUrl}\n\nIf you didn't ask for this, you can ignore this email — nothing has changed.\n\n— Renta-PH`,
     html: emailShell(
       "Reset your password",
       `<p>${greeting}</p>

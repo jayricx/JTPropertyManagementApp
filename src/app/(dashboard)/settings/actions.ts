@@ -231,7 +231,7 @@ export async function sendTestEmailAction(
 
   const result = await sendEmail({
     to,
-    subject: "RentBase-PH — email test",
+    subject: "Renta-PH — email test",
     text: `This is a test message to confirm that ${to} can receive email from your app.
 
 If you are reading it, sending works.`,

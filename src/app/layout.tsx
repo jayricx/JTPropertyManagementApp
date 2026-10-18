@@ -17,13 +17,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RentBase-PH",
+  title: "Renta-PH",
   description:
     "Register properties, track income, and manage maintenance for your rental portfolio.",
-  applicationName: "RentBase-PH",
+  applicationName: "Renta-PH",
   appleWebApp: {
     capable: true,
-    title: "RentBase-PH",
+    title: "Renta-PH",
     // Edge-to-edge under the notch; the chrome pads itself with
     // env(safe-area-inset-*).
     statusBarStyle: "black-translucent",

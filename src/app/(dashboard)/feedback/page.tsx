@@ -24,7 +24,7 @@ import {
 } from "@/lib/feature-requests";
 import { formatDate } from "@/lib/utils";
 
-export const metadata = { title: "Feedback — RentBase-PH" };
+export const metadata = { title: "Feedback — Renta-PH" };
 
 export default async function FeedbackPage() {
   const session = await auth();
@@ -105,7 +105,7 @@ export default async function FeedbackPage() {
                       className="rounded-lg border bg-muted/40 p-3 text-sm"
                     >
                       <p className="text-xs font-medium text-muted-foreground">
-                        Note from RentBase-PH · {formatDate(update.createdAt)}
+                        Note from Renta-PH · {formatDate(update.createdAt)}
                       </p>
                       <p className="mt-1">{update.note}</p>
                     </div>

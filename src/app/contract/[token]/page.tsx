@@ -15,7 +15,7 @@ import {
 } from "./actions";
 
 export const metadata = {
-  title: "Your lease agreement — RentBase-PH",
+  title: "Your lease agreement — Renta-PH",
   robots: { index: false, follow: false },
 };
 
@@ -140,7 +140,7 @@ export default async function ContractTokenPage({
       )}
 
       <p className="border-t pt-4 text-center text-xs text-muted-foreground">
-        Sent by {landlord} through RentBase-PH.
+        Sent by {landlord} through Renta-PH.
       </p>
     </div>
   );

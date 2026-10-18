@@ -3,9 +3,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "FAQ — RentBase-PH",
+  title: "FAQ — Renta-PH",
   description:
-    "Answers about RentBase-PH plans and pricing, GCash and bank-transfer rent collection, tenant portal access, co-owners, and how your data is stored.",
+    "Answers about Renta-PH plans and pricing, GCash and bank-transfer rent collection, tenant portal access, co-owners, and how your data is stored.",
 };
 
 type QA = { question: string; answer: string };
@@ -15,7 +15,7 @@ const SECTIONS: { heading: string; items: QA[] }[] = [
     heading: "Plans and pricing",
     items: [
       {
-        question: "How much does RentBase-PH cost?",
+        question: "How much does Renta-PH cost?",
         answer:
           "Free covers up to 2 units. Starter is ₱199 a month for up to 10 units, Pro is ₱399 for up to 20, and Business is ₱1,299 for up to 100. Paid plans bill annually at ten months' price — two months free. No plan is unlimited.",
       },
@@ -42,7 +42,7 @@ const SECTIONS: { heading: string; items: QA[] }[] = [
       {
         question: "Do I need a GCash merchant account?",
         answer:
-          "No. Tenants send money to your own GCash wallet using ordinary send-money, or to a bank account you list in Settings. There is no gateway, no merchant onboarding and no percentage cut. RentBase-PH keeps the record around the payment, not the payment itself.",
+          "No. Tenants send money to your own GCash wallet using ordinary send-money, or to a bank account you list in Settings. There is no gateway, no merchant onboarding and no percentage cut. Renta-PH keeps the record around the payment, not the payment itself.",
       },
       {
         question: "How does verification work?",
@@ -82,7 +82,7 @@ const SECTIONS: { heading: string; items: QA[] }[] = [
       {
         question: "Do tenants need to install anything?",
         answer:
-          "No. The portal works in the browser on any phone. If they want it on their home screen, RentBase-PH is installable as an app from the browser.",
+          "No. The portal works in the browser on any phone. If they want it on their home screen, Renta-PH is installable as an app from the browser.",
       },
       {
         question: "Can a tenant report a leak with photos?",
@@ -132,7 +132,7 @@ const SECTIONS: { heading: string; items: QA[] }[] = [
       {
         question: "Do you need my bank password or a GCash PIN?",
         answer:
-          "Never. RentBase-PH only records the payment details a tenant submits and the receipt photo they choose to attach. It cannot move money, and it never connects to your bank or wallet.",
+          "Never. Renta-PH only records the payment details a tenant submits and the receipt photo they choose to attach. It cannot move money, and it never connects to your bank or wallet.",
       },
     ],
   },
@@ -158,7 +158,7 @@ export default function FaqPage() {
         Frequently asked questions
       </h1>
       <p className="mt-4 text-lg text-muted-foreground">
-        How RentBase-PH works, what it costs, and what it can and can&apos;t do
+        How Renta-PH works, what it costs, and what it can and can&apos;t do
         with your money.
       </p>
 

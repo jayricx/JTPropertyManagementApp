@@ -101,7 +101,7 @@ export function InstallPrompt() {
         className="size-10 shrink-0 rounded-lg"
       />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">Install RentBase-PH</p>
+        <p className="text-sm font-semibold">Install Renta-PH</p>
         <p className="text-xs text-muted-foreground">
           Add it to your home screen for full-screen, app-like access.
         </p>
@@ -154,7 +154,7 @@ function IosHint({ onDone }: { onDone: () => void }) {
           className="size-10 shrink-0 rounded-lg"
         />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Add RentBase-PH to Home Screen</p>
+          <p className="text-sm font-semibold">Add Renta-PH to Home Screen</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Tap the{" "}
             <ShareIcon className="inline size-3.5 align-text-bottom" /> Share

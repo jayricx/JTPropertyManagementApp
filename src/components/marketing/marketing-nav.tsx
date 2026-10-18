@@ -16,7 +16,7 @@ export function MarketingNav() {
           className="flex items-center gap-2 font-semibold tracking-tight"
         >
           <BrandMark />
-          <span>RentBase-PH</span>
+          <span>Renta-PH</span>
         </Link>
 
         <nav className="flex items-center gap-1 text-sm" aria-label="Main">

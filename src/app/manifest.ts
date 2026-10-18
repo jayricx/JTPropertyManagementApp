@@ -8,8 +8,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "RentBase-PH",
-    short_name: "RentBase-PH",
+    name: "Renta-PH",
+    short_name: "Renta-PH",
     description:
       "Register properties, track rent and income, and manage maintenance — built for independent landlords.",
     start_url: "/dashboard",

@@ -67,7 +67,7 @@ export default function CollectRentGcashGuide() {
       <p className="mt-4 text-muted-foreground">
         The money lands in your wallet directly. There is no gateway, no
         percentage cut, and no onboarding. What you gain from a system like
-        RentBase-PH is not a different payment rail — it&apos;s the record
+        Renta-PH is not a different payment rail — it&apos;s the record
         around it: who paid, for which unit, for which month, and who
         hasn&apos;t.
       </p>
@@ -129,7 +129,7 @@ export default function CollectRentGcashGuide() {
         <strong className="text-foreground">awaiting verification</strong>{" "}
         rather than counting as income immediately. A rent system that records
         money as received the moment a tenant types a number will eventually
-        believe a payment that never happened. RentBase-PH holds every
+        believe a payment that never happened. Renta-PH holds every
         submission — GCash or bank transfer — as pending until you confirm it
         against your own history, and only then counts it toward your balance
         and sends the receipt.

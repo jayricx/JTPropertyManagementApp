@@ -208,7 +208,7 @@ export function renderContractSections(terms: ContractTerms): ContractSection[] 
       heading: "Rent",
       paragraphs: [
         `The ${words.lessee} shall pay the ${words.lessor} a monthly rent of ${formatPeso(terms.rentAmount)}, payable on the date the ${words.lessor} requests each month through GCash or bank transfer.`,
-        `The ${words.lessor} shall record each payment in RentBase-PH, and the ${words.lessee}'s receipt is the payment history shown in their portal.`,
+        `The ${words.lessor} shall record each payment in Renta-PH, and the ${words.lessee}'s receipt is the payment history shown in their portal.`,
       ],
     },
     {

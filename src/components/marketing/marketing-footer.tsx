@@ -37,7 +37,7 @@ export function MarketingFooter() {
           <div>
             <div className="flex items-center gap-2 font-semibold">
               <BrandMark size={22} />
-              <span>RentBase-PH</span>
+              <span>Renta-PH</span>
             </div>
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
               Property management built for Philippine landlords — peso

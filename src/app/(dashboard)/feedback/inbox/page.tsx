@@ -16,7 +16,7 @@ import {
 import { CATEGORY_LABELS, requestInbox } from "@/lib/feature-requests";
 import { formatDate } from "@/lib/utils";
 
-export const metadata = { title: "Request inbox — RentBase-PH" };
+export const metadata = { title: "Request inbox — Renta-PH" };
 
 /**
  * The triage view. Admin-only, and it deliberately never shows a request's

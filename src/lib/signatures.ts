@@ -41,7 +41,7 @@ export const signatureVerificationDescriptions: Record<
   string
 > = {
   email_code: "Entered a code sent to the tenant's email address.",
-  account: "Signed in to their RentBase-PH account.",
+  account: "Signed in to their Renta-PH account.",
   link_only:
     "Signed from the emailed link before email verification was required.",
 };

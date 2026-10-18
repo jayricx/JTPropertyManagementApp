@@ -7,9 +7,9 @@ import { CATEGORY_LABELS, ROADMAP_STATUSES, publicRoadmap } from "@/lib/feature-
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Roadmap — RentBase-PH",
+  title: "Roadmap — Renta-PH",
   description:
-    "What Filipino landlords have asked RentBase-PH to build, and what we're working on. See an idea missing? Send it in.",
+    "What Filipino landlords have asked Renta-PH to build, and what we're working on. See an idea missing? Send it in.",
 };
 
 /**

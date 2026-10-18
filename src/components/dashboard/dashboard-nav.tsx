@@ -151,7 +151,7 @@ function NavBrand({
         height={compact ? 24 : 26}
         priority
       />
-      <span className="truncate">RentBase-PH</span>
+      <span className="truncate">Renta-PH</span>
     </Link>
   );
 }

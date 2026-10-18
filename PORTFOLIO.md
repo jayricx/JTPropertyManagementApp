@@ -164,7 +164,7 @@ export async function roleInPortfolio(userId: string, portfolioId: string): Prom
 export async function activePortfolio(userId: string): Promise<{ id: string; role: PortfolioRole } | null>;
 ```
 
-`activePortfolio` reads a `rentbase_active_portfolio` cookie, validates membership, and falls back
+`activePortfolio` reads a `Renta_active_portfolio` cookie, validates membership, and falls back
 to the earliest membership. With one portfolio it always resolves to that portfolio, so the
 switcher is never needed.
 

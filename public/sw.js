@@ -1,5 +1,5 @@
 /*
- * RentBase-PH — service worker.
+ * Renta-PH — service worker.
  *
  * Deliberately conservative, because this app is auth-gated and serves React
  * Server Component payloads:
