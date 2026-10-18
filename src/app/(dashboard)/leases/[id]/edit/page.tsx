@@ -16,9 +16,11 @@ import { LeaseForm, type LeaseUnitOption } from "@/components/leases/lease-form"
 import { LeaseAttachmentsCard } from "@/components/leases/lease-attachments-card";
 import { LeaseNotesCard } from "@/components/leases/lease-notes-card";
 import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
+import { ContractStatusCard } from "@/components/leases/contract-status-card";
 import { StatementTable } from "@/components/leases/statement-table";
 import { signLeaseAction } from "@/app/(dashboard)/leases/actions";
 import { accessiblePropertyIds, canManageUnit } from "@/lib/access";
+import { activeContract, completedContract } from "@/lib/contracts";
 import { activePortfolioId, roleInPortfolio } from "@/lib/portfolios";
 import {
   definitionsFor,
@@ -99,6 +101,8 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
     noteRows,
     attachmentRows,
     statement,
+    openContract,
+    signedContract,
   ] = await Promise.all([
     db
       .select({
@@ -162,7 +166,9 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         .where(eq(documents.leaseId, lease.id))
         .orderBy(desc(documents.createdAt)),
       getLeaseStatement(lease.id),
-    ]);
+    activeContract(lease.id),
+    completedContract(lease.id),
+  ]);
 
   const tenantOptions = tenantRows.map((t) => ({
     id: t.id,
@@ -219,20 +225,30 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
       {statement && (
         <StatementTable statement={statement} canManage monthOptions={chargeMonthOptions} />
       )}
-      <LeaseSignaturesCard
+      <ContractStatusCard
         leaseId={lease.id}
-        viewer="landlord"
-        signatures={signatures}
-        defaultName={landlordRows[0]?.name ?? ""}
-        landlordName={landlordRows[0]?.name ?? "Landlord"}
-        tenantName={
-          leaseTenantRows[0]
-            ? `${leaseTenantRows[0].firstName} ${leaseTenantRows[0].lastName}`
-            : "Tenant"
-        }
-        action={signLeaseAction}
-        signedHref={`/leases/${lease.id}/signed`}
+        open={openContract}
+        signed={signedContract}
       />
+      {/* One signing surface per lease. Once a contract exists it's the thing
+          being signed, so the bare lease signature card stands down rather than
+          offering a second, version-less mark beside it. */}
+      {!openContract && !signedContract && (
+        <LeaseSignaturesCard
+          leaseId={lease.id}
+          viewer="landlord"
+          signatures={signatures}
+          defaultName={landlordRows[0]?.name ?? ""}
+          landlordName={landlordRows[0]?.name ?? "Landlord"}
+          tenantName={
+            leaseTenantRows[0]
+              ? `${leaseTenantRows[0].firstName} ${leaseTenantRows[0].lastName}`
+              : "Tenant"
+          }
+          action={signLeaseAction}
+          signedHref={`/leases/${lease.id}/signed`}
+        />
+      )}
       <LeaseNotesCard
         leaseId={lease.id}
         notes={noteRows.map((n) => ({

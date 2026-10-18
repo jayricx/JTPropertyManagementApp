@@ -9,9 +9,11 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Auth.js tables (used by @auth/drizzle-adapter)
@@ -370,10 +372,72 @@ export const leases = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Lease contracts — a versioned, *frozen* snapshot of what was agreed.
+//
+// A signature on its own proves only that somebody typed a name: change the
+// rent afterwards and the old signature would sit under the new figure. So the
+// terms are snapshotted into `terms` at the moment of issue, rendered *only*
+// from that snapshot, and hashed — what was signed can't change underneath the
+// signature. Re-issuing writes version 2 rather than editing version 1, and
+// editing the lease supersedes any contract still in flight.
+// ---------------------------------------------------------------------------
+
+export const contractStatusEnum = pgEnum("contract_status", [
+  "draft",
+  "sent",
+  "viewed",
+  "completed",
+  "superseded",
+  "voided",
+]);
+
+/** Statuses where a contract can still be worked on or signed. */
+export const OPEN_CONTRACT_STATUSES = ["draft", "sent", "viewed"] as const;
+export type ContractStatus = (typeof contractStatusEnum.enumValues)[number];
+
+export const leaseContracts = pgTable(
+  "lease_contracts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leaseId: uuid("lease_id")
+      .notNull()
+      .references(() => leases.id, { onDelete: "cascade" }),
+    /** 1, 2, 3… per lease. Never renumbered. */
+    version: integer("version").notNull(),
+    /** The frozen terms as JSON. The contract renders from this and nothing else. */
+    terms: text("terms").notNull(),
+    /** sha256 of the rendered text — proves which terms were signed. */
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    status: contractStatusEnum("status").default("draft").notNull(),
+    /** Who prepared it. RESTRICT: the audit trail outlives any account tidy-up. */
+    issuedBy: uuid("issued_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    issuedAt: timestamp("issued_at", { mode: "date" }),
+    /** The tenant opened it — the "they've at least seen it" signal. */
+    viewedAt: timestamp("viewed_at", { mode: "date" }),
+    landlordSignedAt: timestamp("landlord_signed_at", { mode: "date" }),
+    tenantSignedAt: timestamp("tenant_signed_at", { mode: "date" }),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+    voidedAt: timestamp("voided_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("lease_contracts_lease_version_key").on(t.leaseId, t.version),
+    index("lease_contracts_lease_id_idx").on(t.leaseId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Lease signatures — credential-free e-signing. DocuSign/Hellosign can slot
 // in later (provider id + envelope columns); until then a party signs here
-// with a typed name or a drawn mark, and the pair is the signed lease.
-// One row per party per lease, so re-signing replaces.
+// with a typed name or a drawn mark.
+//
+// `contractId` binds a signature to the version of the terms that were actually
+// on the table, so a completed contract keeps its evidence even after a later
+// version is issued. It is nullable: a lease with no contract keeps the old
+// behaviour (sign the summary), which is also why the uniqueness rules below
+// are two partial indexes rather than one.
 // ---------------------------------------------------------------------------
 
 export const signatureRoleEnum = pgEnum("signature_role", [
@@ -393,6 +457,9 @@ export const leaseSignatures = pgTable(
     leaseId: uuid("lease_id")
       .notNull()
       .references(() => leases.id, { onDelete: "cascade" }),
+    contractId: uuid("contract_id").references(() => leaseContracts.id, {
+      onDelete: "cascade",
+    }),
     role: signatureRoleEnum("role").notNull(),
     signerName: varchar("signer_name", { length: 255 }).notNull(),
     method: signatureMethodEnum("method").notNull(),
@@ -401,8 +468,16 @@ export const leaseSignatures = pgTable(
     signedAt: timestamp("signed_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
-    unique("lease_signatures_lease_role_key").on(t.leaseId, t.role),
+    // One mark per party per contract version…
+    uniqueIndex("lease_signatures_contract_role_key")
+      .on(t.contractId, t.role)
+      .where(sql`${t.contractId} is not null`),
+    // …and one per party per lease for the un-bound legacy signature.
+    uniqueIndex("lease_signatures_lease_role_key")
+      .on(t.leaseId, t.role)
+      .where(sql`${t.contractId} is null`),
     index("lease_signatures_lease_id_idx").on(t.leaseId),
+    index("lease_signatures_contract_id_idx").on(t.contractId),
   ],
 );
 

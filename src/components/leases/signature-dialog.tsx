@@ -26,6 +26,11 @@ interface SignatureDialogProps {
     formData: FormData,
   ) => Promise<SignatureActionState>;
   leaseId: string;
+  /**
+   * Set when signing a specific contract version instead of the bare lease.
+   * The two actions key off different form fields, so exactly one is posted.
+   */
+  contractId?: string;
   /** Prefilled from the roster (landlord account name / tenant name). */
   defaultName: string;
   triggerLabel: string;
@@ -35,6 +40,10 @@ interface SignatureDialogProps {
   size?: "sm" | "default";
   /** Shown when replacing an existing signature. */
   resigning?: boolean;
+  /** Submitted label — "Sign contract" rather than "Sign lease". */
+  submitLabel?: string;
+  /** Attestation wording, which has to name the right document. */
+  attestation?: string;
 }
 
 const CANVAS_WIDTH = 600;
@@ -48,6 +57,7 @@ const CANVAS_HEIGHT = 200;
 export function SignatureDialog({
   action,
   leaseId,
+  contractId,
   defaultName,
   triggerLabel,
   dialogTitle,
@@ -55,6 +65,8 @@ export function SignatureDialog({
   variant = "outline",
   size = "sm",
   resigning = false,
+  submitLabel = "Sign lease",
+  attestation = "I agree that this electronic signature is the legal equivalent of my handwritten signature on this lease.",
 }: SignatureDialogProps) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, null);
@@ -128,6 +140,7 @@ export function SignatureDialog({
 
         <form action={formAction} className="space-y-5">
           <input type="hidden" name="leaseId" value={leaseId} />
+          {contractId && <input type="hidden" name="contractId" value={contractId} />}
           <input type="hidden" name="method" value={method} />
           <input type="hidden" name="drawnSignature" value={dataUrl} />
 
@@ -214,10 +227,7 @@ export function SignatureDialog({
               onChange={(e) => setAttested(e.target.checked)}
               className={cn("mt-0.5 size-4 shrink-0 accent-primary")}
             />
-            <span className="text-muted-foreground">
-              I agree that this electronic signature is the legal equivalent of
-              my handwritten signature on this lease.
-            </span>
+            <span className="text-muted-foreground">{attestation}</span>
           </label>
 
           {/* Once the box is ticked the attestation complaint is stale — don't nag. */}
@@ -237,7 +247,7 @@ export function SignatureDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? "Signing..." : "Sign lease"}
+              {pending ? "Signing..." : submitLabel}
             </Button>
           </DialogFooter>
         </form>

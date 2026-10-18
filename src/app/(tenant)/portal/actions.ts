@@ -2,12 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { leases, maintenanceRequests, payments, tenants, units } from "@/db/schema";
-import { documents } from "@/db/schema";
+import {
+  documents,
+  leaseContracts,
+  leases,
+  maintenanceRequests,
+  payments,
+  tenants,
+  units,
+} from "@/db/schema";
 import {
   sanitizeFileName,
   validateMediaFile,
@@ -22,6 +29,7 @@ import {
   todayPaymentDate,
 } from "@/lib/rent-payment";
 import { saveLeaseSignature } from "@/lib/signatures";
+import { signContract } from "@/lib/contracts";
 import { isUuid } from "@/lib/utils";
 import { leaseSignatureSchema, tenantRequestSchema } from "@/lib/validations";
 
@@ -86,6 +94,81 @@ export async function signLeaseAsTenantAction(
 
   // The landlord watches the lease page for the tenant's mark.
   revalidatePath("/portal");
+  revalidatePath("/leases");
+  return { ok: true };
+}
+
+/**
+ * Sign the contract version the landlord issued. Scoped exactly like the lease
+ * signature above — the contract must belong to *this* tenant's lease, and it
+ * must be one they were actually sent (never a draft, and never someone
+ * else's version).
+ */
+export async function signContractAsTenantAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!isUuid(contractId)) return { error: "That contract could not be found." };
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.accountId, session.user.id))
+    .limit(1);
+  if (!tenant) return { error: "No tenant profile is linked to this account." };
+
+  // The lease join is the gate: a contract id from another tenant's lease
+  // simply doesn't come back.
+  const [contract] = await db
+    .select({ id: leaseContracts.id, leaseId: leaseContracts.leaseId })
+    .from(leaseContracts)
+    .innerJoin(leases, eq(leases.id, leaseContracts.leaseId))
+    .where(
+      and(
+        eq(leaseContracts.id, contractId),
+        eq(leases.tenantId, tenant.id),
+        inArray(leaseContracts.status, ["sent", "viewed"]),
+      ),
+    )
+    .limit(1);
+  if (!contract) return { error: "That contract could not be found." };
+
+  const parsed = leaseSignatureSchema.safeParse({
+    signerName: formData.get("signerName"),
+    method: formData.get("method"),
+    drawnSignature: formData.get("drawnSignature") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid signature." };
+  }
+  if (formData.get("attestation") !== "on") {
+    return { error: "Tick the agreement box to sign." };
+  }
+
+  const signature =
+    parsed.data.method === "typed"
+      ? parsed.data.signerName
+      : (parsed.data.drawnSignature ?? "");
+  if (!signature) return { error: "Draw your signature before signing." };
+
+  try {
+    await signContract({
+      contractId: contract.id,
+      role: "tenant",
+      signerName: parsed.data.signerName,
+      method: parsed.data.method,
+      signature,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Signing failed." };
+  }
+
+  revalidatePath("/portal");
+  revalidatePath(`/portal/contract/${contract.leaseId}`);
   revalidatePath("/leases");
   return { ok: true };
 }

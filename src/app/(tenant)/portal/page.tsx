@@ -1,9 +1,11 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
+import { ArrowRightIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import {
   documents,
+  leaseContracts,
   leases,
   maintenanceRequests,
   portfolios,
@@ -235,6 +237,24 @@ export default async function TenantPortalPage({
       ])
     : [null, "Your landlord"];
 
+  // A contract, when the landlord has issued one, is the thing to sign — so it
+  // replaces the bare signature card rather than sitting beside it.
+  const contractForLease = active
+    ? (
+        await db
+          .select()
+          .from(leaseContracts)
+          .where(
+            and(
+              eq(leaseContracts.leaseId, active.id),
+              inArray(leaseContracts.status, ["sent", "viewed", "completed"]),
+            ),
+          )
+          .orderBy(desc(leaseContracts.version))
+          .limit(1)
+      )[0] ?? null
+    : null;
+
   // The active lease's statement of account — rent, utilities, charges, and
   // payments, the same numbers the landlord sees.
   const statement = active ? await getLeaseStatement(active.id) : null;
@@ -387,7 +407,30 @@ export default async function TenantPortalPage({
       {/* ---------------------------------------------------------------- */}
       {/* Lease signatures                                                  */}
       {/* ---------------------------------------------------------------- */}
-      {active && signatures && (
+      {active && contractForLease && (
+        <Card className="border-primary/40">
+          <CardHeader>
+            <CardTitle>Your lease contract</CardTitle>
+            <CardDescription>
+              {contractForLease.status === "completed"
+                ? `Signed by both parties — version ${contractForLease.version}.`
+                : `${landlordName} has sent you version ${contractForLease.version} to read and sign.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              render={<Link href={`/portal/contract/${active.id}`} />}
+              size="sm"
+            >
+              {contractForLease.status === "completed"
+                ? "View my contract"
+                : "Read and sign"}
+              <ArrowRightIcon />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+      {active && signatures && !contractForLease && (
         <LeaseSignaturesCard
           leaseId={active.id}
           viewer="tenant"

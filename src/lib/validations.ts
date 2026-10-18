@@ -265,6 +265,28 @@ export const leaseNoteSchema = z.object({
     .max(2000, "Notes are limited to 2000 characters."),
 });
 
+/**
+ * The clauses a landlord fills in on a lease contract. Everything mechanical
+ * (parties, premises, term, rent, deposit) is copied off the lease at issue
+ * time and isn't editable here — a contract that could disagree with the lease
+ * it's meant to record would be worse than none.
+ *
+ * Each field is free text on purpose: the useful wording is property-specific
+ * and Philippine tenancy law is not something this app should pretend to
+ * legislate. Blank clauses are dropped from the rendered contract entirely.
+ */
+export const contractTermsSchema = z.object({
+  utilitiesNote: optionalText(2000),
+  depositTerms: optionalText(2000),
+  lateFeeNote: optionalText(2000),
+  repairsNote: optionalText(2000),
+  terminationNote: optionalText(2000),
+  houseRules: optionalText(4000),
+  additionalTerms: optionalText(4000),
+});
+export type ContractFormValues = z.input<typeof contractTermsSchema>;
+export type ContractFormParsed = z.output<typeof contractTermsSchema>;
+
 // ---------------------------------------------------------------------------
 // Utilities (meters & readings) and lease charges — the statement of account
 // ---------------------------------------------------------------------------

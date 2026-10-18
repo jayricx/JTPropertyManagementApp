@@ -1,11 +1,16 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
+import { ArrowLeftIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { leases, properties, tenants, units } from "@/db/schema";
+import { ContractDocument } from "@/components/leases/contract-document";
 import { SignatureDisplay } from "@/components/leases/signature-display";
 import { PrintButton } from "@/components/leases/print-button";
+import { Button } from "@/components/ui/button";
 import { canManageUnit } from "@/lib/access";
+import { completedContract, signaturesForContract } from "@/lib/contracts";
 import { getLeaseSignatures } from "@/lib/signatures";
 import { formatCurrency, formatDate, isUuid } from "@/lib/utils";
 
@@ -61,6 +66,25 @@ export default async function SignedLeasePage({ params }: SignedLeasePageProps) 
     getLeaseSignatures(lease.id),
   ]);
 
+  // A completed contract carries the real signature pair and the frozen terms,
+  // so it supersedes the summary page below. Both can be true — the legacy
+  // pair may predate the contract — and the contract always wins.
+  const signed = await completedContract(lease.id);
+  if (signed) {
+    const contractSignatures = await signaturesForContract(signed.id);
+    if (contractSignatures.landlord && contractSignatures.tenant) {
+      return (
+        <div className="mx-auto max-w-3xl space-y-6">
+          <ContractDocument
+            contract={signed}
+            signatures={contractSignatures}
+            viewerRole="landlord"
+          />
+        </div>
+      );
+    }
+  }
+
   // A lease is only "signed" once both parties have put a mark on it.
   if (!signatures.landlord || !signatures.tenant) {
     return (
@@ -70,6 +94,10 @@ export default async function SignedLeasePage({ params }: SignedLeasePageProps) 
           Both the landlord and the tenant need to sign before a signed copy can
           be shown.
         </p>
+        <Button variant="outline" size="sm" render={<Link href={`/leases/${lease.id}/contract`} />}>
+          <ArrowLeftIcon />
+          Go to the contract
+        </Button>
       </div>
     );
   }

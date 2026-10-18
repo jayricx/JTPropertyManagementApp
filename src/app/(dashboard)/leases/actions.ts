@@ -2,10 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { documents, leaseNotes, leases, tenants, units, charges } from "@/db/schema";
+import {
+  charges,
+  documents,
+  leaseContracts,
+  leaseNotes,
+  leases,
+  tenants,
+  units,
+} from "@/db/schema";
 import { canManageLease, canManageUnit } from "@/lib/access";
 import { canManagePortfolio } from "@/lib/portfolios";
 import {
@@ -16,12 +24,20 @@ import { awardXp } from "@/lib/gamification";
 import { saveLeaseSignature } from "@/lib/signatures";
 import { isUuid } from "@/lib/utils";
 import {
+  contractTermsSchema,
   chargeSchema,
   leaseNoteSchema,
   leaseSchema,
   leaseSignatureSchema,
   type LeaseFormParsed,
 } from "@/lib/validations";
+import {
+  activeContract,
+  draftTermsFromLease,
+  hashContractTerms,
+  signContract,
+  supersedeOpenContracts,
+} from "@/lib/contracts";
 
 export type ActionState = { error: string } | null;
 
@@ -396,6 +412,11 @@ export async function updateLeaseAction(
     })
     .where(eq(leases.id, leaseId));
 
+  // A contract in flight was drawn from the terms as they were a moment ago.
+  // Retire it rather than letting it be signed against stale figures — the
+  // landlord re-issues, which creates the next version.
+  const superseded = await supersedeOpenContracts(leaseId);
+
   // The unit may have changed — resync both the old and the new unit.
   await syncUnitStatus(owned[0].unitId);
   if (parsed.data.unitId !== owned[0].unitId) {
@@ -403,6 +424,14 @@ export async function updateLeaseAction(
   }
 
   revalidateLeasePaths();
+  revalidatePath(`/leases/${leaseId}/edit`);
+  revalidatePath(`/leases/${leaseId}/contract`);
+  // Landlords who edited a lease with a contract out for signature need to
+  // know it's been pulled, so send them to the contract page rather than the
+  // list, where the change would be invisible.
+  if (superseded > 0) {
+    redirect(`/leases/${leaseId}/contract?superseded=1`);
+  }
   redirect("/leases");
 }
 
@@ -486,5 +515,268 @@ export async function deleteChargeAction(
 
   revalidatePath(`/leases/${leaseId}/edit`);
   revalidatePath("/leases");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Contracts — a frozen version of the lease terms, issued and signed as a pair.
+// ---------------------------------------------------------------------------
+
+/** Shape for the contract clause form. */
+export type ContractFormState = { error?: string; ok?: boolean } | null;
+
+/** Resolve a lease this user may manage, or an error to show. */
+async function assertContractLease(
+  userId: string,
+  leaseId: string,
+): Promise<{ error: string } | { leaseId: string }> {
+  if (!isUuid(leaseId)) return { error: "That lease could not be found." };
+  const [lease] = await db
+    .select({ id: leases.id, unitId: leases.unitId })
+    .from(leases)
+    .where(eq(leases.id, leaseId))
+    .limit(1);
+  if (!lease || !(await canManageUnit(userId, lease.unitId))) {
+    return { error: "That lease could not be found." };
+  }
+  return { leaseId };
+}
+
+/**
+ * Start a contract. The mechanical clauses come off the lease as it stands
+ * right now; the landlord fills in the rest on the contract page.
+ */
+export async function createContractAction(leaseId: string): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const owned = await assertContractLease(session.user.id, leaseId);
+  if ("error" in owned) return owned;
+
+  // One contract in flight at a time — sending two versions of the same terms
+  // to one tenant is how you get two conflicting agreements.
+  if (await activeContract(leaseId)) {
+    return { error: "This lease already has a contract in progress." };
+  }
+
+  const terms = await draftTermsFromLease(leaseId);
+  if (!terms) return { error: "That lease could not be found." };
+
+  // Continue the version sequence rather than restarting it, so a voided or
+  // superseded version is never reused.
+  const [highest] = await db
+    .select({ version: leaseContracts.version })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.leaseId, leaseId))
+    .orderBy(desc(leaseContracts.version))
+    .limit(1);
+
+  await db.insert(leaseContracts).values({
+    leaseId,
+    version: (highest?.version ?? 0) + 1,
+    terms: JSON.stringify(terms),
+    contentHash: hashContractTerms(terms),
+    status: "draft",
+    issuedBy: session.user.id,
+  });
+
+  revalidatePath(`/leases/${leaseId}/contract`);
+  revalidatePath(`/leases/${leaseId}/edit`);
+  return {};
+}
+
+/** Save the clauses the landlord wrote. Only while it's still a draft. */
+export async function saveContractAction(
+  _prev: ContractFormState,
+  formData: FormData,
+): Promise<ContractFormState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!isUuid(contractId)) return { error: "That contract could not be found." };
+
+  const [contract] = await db
+    .select({
+      id: leaseContracts.id,
+      leaseId: leaseContracts.leaseId,
+      status: leaseContracts.status,
+      terms: leaseContracts.terms,
+    })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  if (!contract) return { error: "That contract could not be found." };
+
+  const owned = await assertContractLease(session.user.id, contract.leaseId);
+  if ("error" in owned) return { error: owned.error };
+
+  // Once sent, the words are the tenant's to read — editing them underneath
+  // would be the exact drift the snapshot exists to prevent.
+  if (contract.status !== "draft") {
+    return { error: "This contract has already been sent and can't be edited." };
+  }
+
+  const parsed = contractTermsSchema.safeParse(toFormDataRecord(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid contract terms." };
+  }
+
+  // Only the clauses are editable — the parties, premises, term and figures
+  // stay exactly as they were copied off the lease.
+  const existing = JSON.parse(contract.terms) as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [key, value] of Object.entries(parsed.data)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  const terms = merged as unknown as Parameters<typeof hashContractTerms>[0];
+
+  await db
+    .update(leaseContracts)
+    .set({ terms: JSON.stringify(terms), contentHash: hashContractTerms(terms) })
+    .where(eq(leaseContracts.id, contractId));
+
+  revalidatePath(`/leases/${contract.leaseId}/contract`);
+  return { ok: true };
+}
+
+/**
+ * Hand the contract to the tenant. This freezes it: from here the wording can
+ * only change by starting a new version.
+ */
+export async function issueContractAction(contractId: string): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (!isUuid(contractId)) return { error: "That contract could not be found." };
+
+  const [contract] = await db
+    .select({
+      id: leaseContracts.id,
+      leaseId: leaseContracts.leaseId,
+      status: leaseContracts.status,
+    })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  if (!contract) return { error: "That contract could not be found." };
+
+  const owned = await assertContractLease(session.user.id, contract.leaseId);
+  if ("error" in owned) return { error: owned.error };
+
+  if (contract.status !== "draft") {
+    return { error: "This contract has already been sent." };
+  }
+
+  await db
+    .update(leaseContracts)
+    .set({ status: "sent", issuedAt: new Date(), issuedBy: session.user.id })
+    .where(eq(leaseContracts.id, contractId));
+
+  revalidatePath(`/leases/${contract.leaseId}/contract`);
+  revalidatePath(`/leases/${contract.leaseId}/edit`);
+  revalidatePath("/portal");
+  return {};
+}
+
+/** Withdraw a contract that hasn't been signed by both parties. */
+export async function voidContractAction(contractId: string): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+  if (!isUuid(contractId)) return { error: "That contract could not be found." };
+
+  const [contract] = await db
+    .select({
+      id: leaseContracts.id,
+      leaseId: leaseContracts.leaseId,
+      status: leaseContracts.status,
+      completedAt: leaseContracts.completedAt,
+    })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  if (!contract) return { error: "That contract could not be found." };
+
+  const owned = await assertContractLease(session.user.id, contract.leaseId);
+  if ("error" in owned) return { error: owned.error };
+
+  // A completed contract is an executed agreement. Retracting it would leave
+  // both parties holding signatures with nothing behind them.
+  if (contract.completedAt) {
+    return { error: "A signed contract can't be voided — issue a new version instead." };
+  }
+  if (!["draft", "sent", "viewed"].includes(contract.status)) {
+    return { error: "This contract can't be voided." };
+  }
+
+  await db
+    .update(leaseContracts)
+    .set({ status: "voided", voidedAt: new Date() })
+    .where(eq(leaseContracts.id, contractId));
+
+  revalidatePath(`/leases/${contract.leaseId}/contract`);
+  revalidatePath(`/leases/${contract.leaseId}/edit`);
+  revalidatePath("/portal");
+  return {};
+}
+
+/**
+ * The landlord's signature on a specific version of the contract. The terms are
+ * on screen first — you shouldn't be able to sign a document you can't see.
+ */
+export async function signContractAsLandlordAction(
+  _prev: SignatureFormState,
+  formData: FormData,
+): Promise<SignatureFormState> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "landlord") {
+    return { error: "Only landlord accounts can sign here." };
+  }
+
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!isUuid(contractId)) return { error: "That contract could not be found." };
+
+  const [contract] = await db
+    .select({ id: leaseContracts.id, leaseId: leaseContracts.leaseId })
+    .from(leaseContracts)
+    .where(eq(leaseContracts.id, contractId))
+    .limit(1);
+  if (!contract) return { error: "That contract could not be found." };
+
+  const owned = await assertContractLease(session.user.id, contract.leaseId);
+  if ("error" in owned) return { error: owned.error };
+
+  const parsed = leaseSignatureSchema.safeParse({
+    signerName: formData.get("signerName"),
+    method: formData.get("method"),
+    drawnSignature: formData.get("drawnSignature") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid signature." };
+  }
+  if (formData.get("attestation") !== "on") {
+    return { error: "Tick the agreement box to sign." };
+  }
+
+  const signature =
+    parsed.data.method === "typed"
+      ? parsed.data.signerName
+      : (parsed.data.drawnSignature ?? "");
+  if (!signature) return { error: "Draw your signature before signing." };
+
+  try {
+    await signContract({
+      contractId,
+      role: "landlord",
+      signerName: parsed.data.signerName,
+      method: parsed.data.method,
+      signature,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Signing failed." };
+  }
+
+  revalidatePath(`/leases/${contract.leaseId}/contract`);
+  revalidatePath(`/leases/${contract.leaseId}/edit`);
+  revalidatePath(`/leases/${contract.leaseId}/signed`);
   return { ok: true };
 }

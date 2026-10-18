@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { leaseSignatures } from "@/db/schema";
 import type { SignatureMethod, SignatureRole } from "@/lib/validations";
@@ -29,7 +29,16 @@ export interface LeaseSignature {
   signedAt: Date;
 }
 
-/** Both signatures for a lease, keyed by role (missing role → null). */
+/**
+ * The lease's *bare* signature pair — the ones with no contract attached.
+ *
+ * Deliberately filtered: once a contract exists its signatures live on the
+ * contract version, and a lease can carry both (a legacy pair and a
+ * version-bound one). Reading every row here would return whichever the driver
+ * happened to hand back last, which is exactly the "whose signature is this?"
+ * ambiguity the contract work exists to remove. Use `effectiveSignatures` from
+ * `lib/contracts` when you want the pair that actually counts.
+ */
 export async function getLeaseSignatures(
   leaseId: string,
 ): Promise<Record<SignatureRole, LeaseSignature | null>> {
@@ -42,7 +51,12 @@ export async function getLeaseSignatures(
       signedAt: leaseSignatures.signedAt,
     })
     .from(leaseSignatures)
-    .where(eq(leaseSignatures.leaseId, leaseId));
+    .where(
+      and(
+        eq(leaseSignatures.leaseId, leaseId),
+        isNull(leaseSignatures.contractId),
+      ),
+    );
 
   const byRole: Record<SignatureRole, LeaseSignature | null> = {
     landlord: null,
