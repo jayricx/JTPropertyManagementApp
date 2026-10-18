@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { documents, leaseNotes, leases, tenants, units, charges } from "@/db/schema";
 import { canManageLease, canManageUnit } from "@/lib/access";
+import { canManagePortfolio } from "@/lib/portfolios";
 import {
   sanitizeFileName,
   validateAttachment,
@@ -259,13 +260,14 @@ export async function syncUnitStatus(unitId: string): Promise<void> {
 // Unit manage access (owned or co-owned — viewers excluded) is checked via
 // `canManageUnit`.
 
+/** The tenant roster is shared by the whole portfolio (owner or co-owner). */
 async function ownsTenant(userId: string, tenantId: string) {
-  const rows = await db
-    .select({ id: tenants.id })
+  const [row] = await db
+    .select({ portfolioId: tenants.portfolioId })
     .from(tenants)
-    .where(and(eq(tenants.id, tenantId), eq(tenants.userId, userId)))
+    .where(eq(tenants.id, tenantId))
     .limit(1);
-  return rows.length > 0;
+  return row ? canManagePortfolio(userId, row.portfolioId) : false;
 }
 
 /** A unit can only hold one active lease at a time. */

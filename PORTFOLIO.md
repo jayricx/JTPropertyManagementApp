@@ -1,7 +1,28 @@
 # Portfolio Model — Design
 
-**Status:** Design for review. No implementation yet.
+**Status:** Implemented. Phases 0–3 shipped together; the migration is applied
+to the dev database (`_migrate_portfolios.mjs`, then
+`_migrate_portfolios_retire.mjs`).
 **Supersedes:** per-property co-ownership (`property_collaborators`) and per-user custom-field scoping.
+
+## What shipped
+
+- `portfolios` + `portfolio_members` (`owner` / `co_owner` / `viewer`), with
+  `ON DELETE RESTRICT` everywhere so no cascade can delete a portfolio's data.
+- `src/lib/portfolios.ts` — membership, the active-portfolio cookie, and
+  provisioning (`ensurePortfolioForUser`). Every user gets one silently at
+  signup, so a solo owner never sees the word "portfolio".
+- `src/lib/access.ts` — same eight read-tier signatures, now resolving through
+  the portfolio. `property_collaborators` is gone.
+- Portfolio switcher in the nav, rendered **only when there are 2+**.
+- Settings → **Portfolio members** (one invite per person, role change, remove)
+  and a **Custom fields** overview; the old per-property co-owner card is gone.
+- Custom fields on properties, leases and tenants: values on the record's own
+  page, definitions owner-only, portfolio-scoped.
+- `plan` stays on the account; a portfolio's quota is its **owner's** plan and
+  its own unit count. Co-owned membership doesn't consume quota.
+- Payout details (GCash, bank accounts), the "your landlord" label and the
+  lease-end cron all resolve through the **portfolio owner**.
 
 ## Summary
 

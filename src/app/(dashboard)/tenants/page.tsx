@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { DeleteTenantButton } from "@/components/tenants/delete-tenant-button";
 import { accessiblePropertyIds } from "@/lib/access";
+import { activePortfolioId } from "@/lib/portfolios";
 
 export default async function TenantsPage() {
   const session = await auth();
@@ -30,8 +31,9 @@ export default async function TenantsPage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
 
-  // Tenants on properties shared with this user (as co-owner) are visible
-  // read-only; a tenant record itself stays with whoever created it.
+  // The roster belongs to the portfolio: every member sees the same tenants and
+  // can edit them, so the old read-only "co-owner's tenant" silo is gone.
+  const portfolioId = await activePortfolioId(userId);
   const accessibleIds = await accessiblePropertyIds(userId);
   const sharedTenantIds = accessibleIds.length
     ? (
@@ -51,14 +53,18 @@ export default async function TenantsPage() {
       email: tenants.email,
       phone: tenants.phone,
       accountId: tenants.accountId,
-      owned: eq(tenants.userId, userId),
+      // Still useful as a hint, but no longer an access decision.
+      addedByYou: eq(tenants.userId, userId),
       // Postgres aggregate FILTER — active leases only.
       activeLeases: sql<number>`count(${leases.id}) filter (where ${leases.status} = 'active')`,
     })
     .from(tenants)
     .leftJoin(leases, eq(leases.tenantId, tenants.id))
     .where(
-      or(eq(tenants.userId, userId), inArray(tenants.id, sharedTenantIds)),
+      or(
+        portfolioId ? eq(tenants.portfolioId, portfolioId) : undefined,
+        inArray(tenants.id, sharedTenantIds),
+      ),
     )
     .groupBy(tenants.id)
     .orderBy(desc(tenants.createdAt));
@@ -132,27 +138,22 @@ export default async function TenantsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {t.owned ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            render={
-                              <Link href={`/tenants/${t.id}/edit`}>
-                                Edit
-                              </Link>
-                            }
-                          />
-                          <DeleteTenantButton
-                            tenantId={t.id}
-                            tenantName={`${t.firstName} ${t.lastName}`}
-                          />
-                        </div>
-                      ) : (
-                        <span className="text-right text-xs text-muted-foreground">
-                          Co-owner&rsquo;s tenant
-                        </span>
-                      )}
+                      {/* Every portfolio member manages the roster, so the
+                          row is always actionable — the "co-owner's tenant"
+                          read-only case no longer exists. */}
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          render={<Link href={`/tenants/${t.id}/edit`} />}
+                        >
+                          Edit
+                        </Button>
+                        <DeleteTenantButton
+                          tenantId={t.id}
+                          tenantName={`${t.firstName} ${t.lastName}`}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -139,7 +139,14 @@ function NavBrand({
   );
 }
 
-export function DashboardNav({ hasPortal = false }: { hasPortal?: boolean }) {
+export function DashboardNav({
+  hasPortal = false,
+  children,
+}: {
+  hasPortal?: boolean;
+  /** Rendered under the brand in the sidebar (the portfolio switcher). */
+  children?: React.ReactNode;
+}) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -158,6 +165,7 @@ export function DashboardNav({ hasPortal = false }: { hasPortal?: boolean }) {
         <div className="flex h-16 items-center border-b border-sidebar-border px-6">
           <NavBrand />
         </div>
+        {children}
         <nav className="flex-1 space-y-1 p-4">
           <NavLinks pathname={pathname} hasPortal={hasPortal} />
         </nav>
@@ -209,6 +217,7 @@ export function DashboardNav({ hasPortal = false }: { hasPortal?: boolean }) {
                 <X />
               </Button>
             </div>
+            {children}
             <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-4">
               <NavLinks
                 pathname={pathname}

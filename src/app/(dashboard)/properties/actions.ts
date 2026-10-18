@@ -2,19 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { properties, propertyCollaborators, units, users } from "@/db/schema";
-import { accessiblePropertyIds, canManageProperty, isPropertyOwner } from "@/lib/access";
+import { properties, units } from "@/db/schema";
+import {
+  accessiblePropertyIds,
+  canDeleteProperty,
+  canManageProperty,
+  portfolioIdForProperty,
+} from "@/lib/access";
 import { awardXp } from "@/lib/gamification";
+import { ensurePortfolioForUser } from "@/lib/portfolios";
 import {
   suggestRentForUnit,
   type RentSuggestion,
 } from "@/lib/rent-insights";
 import { isUuid } from "@/lib/utils";
 import { propertySchema, unitSchema, type UnitFormParsed } from "@/lib/validations";
-import { getPlanUsage, type PlanUsage } from "@/lib/plan-usage";
+import { getPortfolioUsage, type PlanUsage } from "@/lib/plan-usage";
 
 export type ActionState = { error: string } | null;
 export type UnitActionState = { error: string } | { upgrade: PlanUsage } | null;
@@ -88,9 +94,13 @@ export async function createPropertyAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid property data." };
   }
 
+  // Every property belongs to a portfolio; the first one is provisioned
+  // silently so a solo owner never has to think about it.
+  const portfolioId = await ensurePortfolioForUser(session.user.id);
+
   const [created] = await db
     .insert(properties)
-    .values({ ...parsed.data, userId: session.user.id })
+    .values({ ...parsed.data, portfolioId })
     .returning({ id: properties.id });
 
   await awardXp(session.user.id, "property_created");
@@ -136,12 +146,9 @@ export async function deletePropertyAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
-  // Deleting cascades to units, leases, and requests — owner only.
-  if (!(await canManageProperty(session.user.id, id))) {
-    return { error: "Property not found." };
-  }
-  if (!(await isPropertyOwner(session.user.id, id))) {
-    return { error: "Only the property owner can delete this property." };
+  // Deleting cascades to units, leases, and requests — portfolio owner only.
+  if (!(await canDeleteProperty(session.user.id, id))) {
+    return { error: "Only the portfolio owner can delete this property." };
   }
 
   const deleted = await db
@@ -151,89 +158,6 @@ export async function deletePropertyAction(
   if (!deleted.length) return { error: "Property not found." };
 
   revalidatePath("/properties");
-  return {};
-}
-
-// ---------------------------------------------------------------------------
-// Collaborators — sharing is managed by the property owner only.
-// ---------------------------------------------------------------------------
-
-export async function addCoOwnerAction(
-  propertyId: string,
-  email: string,
-  role: "co_owner" | "viewer" = "co_owner",
-): Promise<{ error?: string }> {
-  const session = await auth();
-  if (!session?.user) return { error: "You must be signed in." };
-
-  if (!(await isPropertyOwner(session.user.id, propertyId))) {
-    return { error: "Only the property owner can manage sharing." };
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail) return { error: "Enter an email address." };
-  const collaboratorRole = role === "viewer" ? "viewer" : "co_owner";
-
-  const target = await db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(eq(sql`lower(${users.email})`, normalizedEmail))
-    .limit(1);
-  if (!target.length) {
-    return {
-      error: "No account with that email. Ask them to register first.",
-    };
-  }
-  if (target[0].id === session.user.id) {
-    return { error: "You already own this property." };
-  }
-
-  const existing = await db
-    .select({ id: propertyCollaborators.id })
-    .from(propertyCollaborators)
-    .where(
-      and(
-        eq(propertyCollaborators.propertyId, propertyId),
-        eq(propertyCollaborators.userId, target[0].id),
-      ),
-    )
-    .limit(1);
-  if (existing.length) return { error: "That user already has access to this property." };
-
-  await db.insert(propertyCollaborators).values({
-    propertyId,
-    userId: target[0].id,
-    role: collaboratorRole,
-    addedBy: session.user.id,
-  });
-
-  revalidatePath("/properties");
-  revalidatePath(`/properties/${propertyId}`);
-  return {};
-}
-
-export async function removeCoOwnerAction(
-  propertyId: string,
-  collaboratorId: string,
-): Promise<{ error?: string }> {
-  const session = await auth();
-  if (!session?.user) return { error: "You must be signed in." };
-
-  if (!(await isPropertyOwner(session.user.id, propertyId))) {
-    return { error: "Only the property owner can manage sharing." };
-  }
-
-  await db
-    .delete(propertyCollaborators)
-    .where(
-      and(
-        eq(propertyCollaborators.id, collaboratorId),
-        eq(propertyCollaborators.propertyId, propertyId),
-      ),
-    );
-
-  revalidatePath("/properties");
-  revalidatePath(`/properties/${propertyId}`);
   return {};
 }
 
@@ -277,7 +201,10 @@ export async function createUnitAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid unit data." };
   }
 
-  const usage = await getPlanUsage(session.user.id);
+  // The unit lands in a portfolio, so the quota that applies is the one that
+  // pays for it: the portfolio owner's plan, not the co-owner's own.
+  const portfolioId = await portfolioIdForProperty(propertyId);
+  const usage = await getPortfolioUsage(portfolioId ?? "");
   if (usage.atLimit && usage.limit !== null) {
     return { upgrade: usage };
   }

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gt, isNull, lt, ne } from "drizzle-orm";
 import { db } from "@/db/client";
-import { properties, tenantInvitations, tenants, users } from "@/db/schema";
+import { portfolioMembers, portfolios, tenantInvitations, tenants, users } from "@/db/schema";
 
 /**
  * Portal invitations for tenants.
@@ -87,13 +87,16 @@ async function loadAcceptedInvite(
 ): Promise<AcceptedInvite | null> {
   const [tenant] = await db
     .select({
-      userId: tenants.userId,
+      // The portfolio owner is who the tenant is dealing with — not whoever
+      // happened to create the roster row.
+      landlordId: portfolios.ownerUserId,
       accountId: tenants.accountId,
       email: tenants.email,
       firstName: tenants.firstName,
       lastName: tenants.lastName,
     })
     .from(tenants)
+    .innerJoin(portfolios, eq(portfolios.id, tenants.portfolioId))
     .where(eq(tenants.id, tenantId))
     .limit(1);
 
@@ -101,7 +104,7 @@ async function loadAcceptedInvite(
 
   return {
     tenantId,
-    landlordId: tenant.userId,
+    landlordId: tenant.landlordId,
     email: tenant.email.toLowerCase(),
     tenantName: `${tenant.firstName} ${tenant.lastName}`.trim(),
     alreadyActive: tenant.accountId !== null,
@@ -189,12 +192,17 @@ async function linkInviteToAccount(
   // password path, which stores a verification date on the fresh account.
   if (account && !account.emailVerified) updates.emailVerified = new Date();
   if (account && account.role !== "tenant" && account.passwordHash === null) {
-    const [owned] = await db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(eq(properties.userId, accountId))
+    // Only demote to a pure tenant when the account has no landlord work at
+    // all. That means *portfolio membership*, not owning a property directly:
+    // a co-owner invited by email owns nothing, and checking properties would
+    // demote them to `tenant` and lock them out of the dashboard they were
+    // just invited into.
+    const [membership] = await db
+      .select({ id: portfolioMembers.id })
+      .from(portfolioMembers)
+      .where(eq(portfolioMembers.userId, accountId))
       .limit(1);
-    if (!owned) updates.role = "tenant";
+    if (!membership) updates.role = "tenant";
   }
   if (Object.keys(updates).length > 0) {
     await db.update(users).set(updates).where(eq(users.id, accountId));

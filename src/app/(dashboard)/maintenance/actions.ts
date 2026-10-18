@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { maintenanceRequests, tenants, units } from "@/db/schema";
 import { canManageProperty } from "@/lib/access";
+import { canManagePortfolio } from "@/lib/portfolios";
 import { awardXp } from "@/lib/gamification";
 import { maintenanceSchema, type MaintenanceFormParsed } from "@/lib/validations";
 
@@ -35,13 +36,14 @@ async function ownsTargets(
   return rows.length > 0;
 }
 
+/** The tenant roster is shared by the whole portfolio (owner or co-owner). */
 async function ownsTenant(userId: string, tenantId: string) {
-  const rows = await db
-    .select({ id: tenants.id })
+  const [row] = await db
+    .select({ portfolioId: tenants.portfolioId })
     .from(tenants)
-    .where(and(eq(tenants.id, tenantId), eq(tenants.userId, userId)))
+    .where(eq(tenants.id, tenantId))
     .limit(1);
-  return rows.length > 0;
+  return row ? canManagePortfolio(userId, row.portfolioId) : false;
 }
 
 function maintenanceDbValues(data: MaintenanceFormParsed) {

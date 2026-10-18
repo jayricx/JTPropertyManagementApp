@@ -3,7 +3,7 @@ import { count, desc, eq, inArray, sql } from "drizzle-orm";
 import { PlusIcon } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { properties, propertyCollaborators, units } from "@/db/schema";
+import { properties, units } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { accessiblePropertyIds } from "@/lib/access";
+import { activePortfolio } from "@/lib/portfolios";
 import { formatCurrency } from "@/lib/utils";
 import { propertyTypeLabels } from "@/lib/validations";
 import { getPlanUsage } from "@/lib/plan-usage";
@@ -25,6 +26,11 @@ export default async function PropertiesPage() {
   // The dashboard layout redirects unauthenticated visitors.
   if (!userId) return null;
   const usage = await getPlanUsage(userId);
+
+  // One role for the whole portfolio — co-owner/viewer is now a property of the
+  // portfolio rather than of each property.
+  const portfolio = await activePortfolio(userId);
+  const portfolioRole = portfolio?.role ?? "owner";
 
   // Owned properties plus properties shared with this user as co-owner.
   const accessibleIds = await accessiblePropertyIds(userId);
@@ -39,7 +45,6 @@ export default async function PropertiesPage() {
           state: properties.state,
           country: properties.country,
           type: properties.type,
-          ownerId: properties.userId,
           unitCount: count(units.id),
           // Postgres aggregate FILTER — occupied units only.
           occupiedCount: sql<string>`count(${units.id}) filter (where ${units.status} = 'occupied')`,
@@ -51,19 +56,6 @@ export default async function PropertiesPage() {
         .groupBy(properties.id)
         .orderBy(desc(properties.createdAt))
     : [];
-
-  // This user's collaborator roles, to badge shared properties as
-  // "Co-owned" vs read-only "Viewer".
-  const collabRoleRows = await db
-    .select({
-      propertyId: propertyCollaborators.propertyId,
-      role: propertyCollaborators.role,
-    })
-    .from(propertyCollaborators)
-    .where(eq(propertyCollaborators.userId, userId));
-  const roleByProperty = new Map(
-    collabRoleRows.map((r) => [r.propertyId, r.role]),
-  );
 
   return (
     <div className="space-y-6">
@@ -118,7 +110,6 @@ export default async function PropertiesPage() {
             const occupied = Number(p.occupiedCount ?? 0);
             const occupancy =
               p.unitCount > 0 ? Math.round((occupied / p.unitCount) * 100) : 0;
-            const isCoOwned = p.ownerId !== userId;
 
             return (
               <Link key={p.id} href={`/properties/${p.id}`} className="group">
@@ -129,12 +120,13 @@ export default async function PropertiesPage() {
                         {p.name}
                       </CardTitle>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        {isCoOwned && (
-                          <Badge variant="outline">
-                            {roleByProperty.get(p.id) === "viewer"
-                              ? "Viewer"
-                              : "Co-owned"}
-                          </Badge>
+                        {/* One badge for the portfolio role, rather than a
+                            per-property "co-owned" marker. */}
+                        {portfolioRole === "co_owner" && (
+                          <Badge variant="outline">Co-owner</Badge>
+                        )}
+                        {portfolioRole === "viewer" && (
+                          <Badge variant="outline">Viewer</Badge>
                         )}
                         <Badge variant="secondary" className="capitalize">
                           {propertyTypeLabels[p.type]}

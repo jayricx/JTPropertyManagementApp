@@ -19,6 +19,12 @@ import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
 import { StatementTable } from "@/components/leases/statement-table";
 import { signLeaseAction } from "@/app/(dashboard)/leases/actions";
 import { accessiblePropertyIds, canManageUnit } from "@/lib/access";
+import { activePortfolioId, roleInPortfolio } from "@/lib/portfolios";
+import {
+  definitionsFor,
+  parseCustomFields,
+} from "@/lib/custom-fields";
+import { CustomFieldsCard } from "@/components/custom-fields/custom-fields-card";
 import { getLeaseStatement } from "@/lib/statements";
 import { getLeaseSignatures } from "@/lib/signatures";
 import { currentMonthKey, isUuid, listMonths, shiftMonth } from "@/lib/utils";
@@ -41,6 +47,9 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
 
+  // The tenant dropdown lists the portfolio's roster.
+  const portfolioId = (await activePortfolioId(userId)) ?? "";
+
   const [lease] = await db
     .select({
       id: leases.id,
@@ -53,6 +62,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
       depositReturned: leases.depositReturned,
       status: leases.status,
       notes: leases.notes,
+      customFields: leases.customFields,
     })
     .from(leases)
     .where(eq(leases.id, id))
@@ -60,6 +70,23 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
   // The lease's unit must sit on a property this user can access.
   // Viewers may look at leases but not edit them.
   if (!lease || !(await canManageUnit(userId, lease.unitId))) notFound();
+
+  // The lease's portfolio (through its unit's property) owns its custom
+  // fields, and decides who may define versus only fill them in.
+  const [leasePortfolio] = await db
+    .select({ portfolioId: properties.portfolioId })
+    .from(units)
+    .innerJoin(properties, eq(units.propertyId, properties.id))
+    .where(eq(units.id, lease.unitId))
+    .limit(1);
+  const leasePortfolioId = leasePortfolio?.portfolioId ?? "";
+  const [leaseRole, leaseFieldDefs] = await Promise.all([
+    roleInPortfolio(userId, leasePortfolioId),
+    definitionsFor(leasePortfolioId, "lease"),
+  ]);
+  const leaseFieldValues = parseCustomFields(lease.customFields);
+  const canManage = leaseRole === "owner" || leaseRole === "co_owner";
+  const canDefine = leaseRole === "owner";
 
   const accessibleIds = await accessiblePropertyIds(userId);
 
@@ -80,7 +107,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         lastName: tenants.lastName,
       })
       .from(tenants)
-      .where(eq(tenants.userId, userId))
+      .where(eq(tenants.portfolioId, portfolioId))
       .orderBy(asc(tenants.lastName), asc(tenants.firstName)),
     db
       .select({
@@ -180,6 +207,14 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         lease={formValues}
         unitOptions={unitOptions}
         tenantOptions={tenantOptions}
+      />
+      <CustomFieldsCard
+        entity="lease"
+        targetId={lease.id}
+        definitions={leaseFieldDefs}
+        values={leaseFieldValues}
+        canEdit={canManage}
+        canDefine={canDefine}
       />
       {statement && (
         <StatementTable statement={statement} canManage monthOptions={chargeMonthOptions} />

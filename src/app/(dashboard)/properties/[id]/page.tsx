@@ -8,11 +8,11 @@ import {
   leases,
   meterReadings,
   meters,
+  portfolioMembers,
+  portfolios,
   properties,
-  propertyCollaborators,
   tenants,
   units,
-  users,
 } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,13 +31,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CoOwnersCard } from "@/components/properties/co-owners-card";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
+import { CustomFieldsCard } from "@/components/custom-fields/custom-fields-card";
 import { UnitFormDialog } from "@/components/properties/unit-form-dialog";
 import { UnitRowActions } from "@/components/properties/unit-row-actions";
 import { MeterFormDialog } from "@/components/properties/meter-form-dialog";
 import { MeterRowActions } from "@/components/properties/meter-row-actions";
 import { getPropertyAccess } from "@/lib/access";
+import {
+  definitionsFor,
+  parseCustomFields,
+} from "@/lib/custom-fields";
 import { formatCurrency, isUuid } from "@/lib/utils";
 import {
   meterConsumptionUnits,
@@ -70,7 +74,7 @@ export default async function PropertyDetailPage({
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
 
-  // Access = owned by this user, or shared with them (co_owner or viewer).
+  // Access = a member of the portfolio that owns this property.
   const [property] = await db
     .select()
     .from(properties)
@@ -82,35 +86,32 @@ export default async function PropertyDetailPage({
   const isOwner = access === "owner";
   const canManage = access !== "viewer";
 
-  // Collaborator roster, plus the owner's name when the viewer is a guest.
-  const [coOwnerRows, ownerRows] = await Promise.all([
-    db
-      .select({
-        id: propertyCollaborators.id,
-        name: users.name,
-        email: users.email,
-        role: propertyCollaborators.role,
-        createdAt: propertyCollaborators.createdAt,
-      })
-      .from(propertyCollaborators)
-      .innerJoin(users, eq(propertyCollaborators.userId, users.id))
-      .where(eq(propertyCollaborators.propertyId, id))
-      .orderBy(asc(propertyCollaborators.createdAt)),
-    isOwner
-      ? Promise.resolve([])
-      : db
-          .select({ name: users.name, email: users.email })
-          .from(users)
-          .where(eq(users.id, property.userId))
-          .limit(1),
-  ]);
-  const ownerLabel = ownerRows[0]?.name ?? ownerRows[0]?.email ?? "the owner";
+  // Members work on the portfolio as a whole, so the property page names it
+  // rather than a per-property co-owner list.
+  const [portfolioRow] = await db
+    .select({ name: portfolios.name, role: portfolioMembers.role })
+    .from(portfolios)
+    .innerJoin(portfolioMembers, eq(portfolioMembers.portfolioId, portfolios.id))
+    .where(
+      and(
+        eq(portfolios.id, property.portfolioId),
+        eq(portfolioMembers.userId, userId),
+      ),
+    )
+    .limit(1);
 
   const unitRows = await db
     .select()
     .from(units)
     .where(eq(units.propertyId, id))
     .orderBy(asc(units.name));
+
+  // Custom fields come from the portfolio, so a co-owner sees exactly what
+  // the owner sees.
+  const [propertyFieldDefs, propertyFieldValues] = await Promise.all([
+    definitionsFor(property.portfolioId, "property"),
+    Promise.resolve(parseCustomFields(property.customFields)),
+  ]);
 
   // Current tenant for each unit with an active lease.
   const activeLeaseRows = await db
@@ -192,7 +193,7 @@ export default async function PropertyDetailPage({
             </h1>
             {!isOwner && (
               <Badge variant="outline">
-                {access === "viewer" ? "Viewer" : "Co-owned"}
+                {access === "viewer" ? "Viewer" : "Co-owner"}
               </Badge>
             )}
             <Badge variant="secondary" className="capitalize">
@@ -200,6 +201,14 @@ export default async function PropertyDetailPage({
             </Badge>
           </div>
           <p className="text-muted-foreground">{addressLine}</p>
+          {!isOwner && portfolioRow?.name && (
+            <p className="text-xs text-muted-foreground">
+              In the {portfolioRow.name} portfolio —{" "}
+              {portfolioRow.role === "viewer"
+                ? "read-only access"
+                : "you can manage this portfolio"}
+            </p>
+          )}
         </div>
         {canManage && (
           <div className="flex gap-2">
@@ -386,11 +395,13 @@ export default async function PropertyDetailPage({
         </CardContent>
       </Card>
 
-      <CoOwnersCard
-        propertyId={property.id}
-        isOwner={isOwner}
-        ownerLabel={isOwner ? undefined : ownerLabel}
-        coOwners={coOwnerRows}
+      <CustomFieldsCard
+        entity="property"
+        targetId={property.id}
+        definitions={propertyFieldDefs}
+        values={propertyFieldValues}
+        canEdit={canManage}
+        canDefine={isOwner}
       />
 
       {property.notes && (

@@ -13,9 +13,19 @@ import {
   INVITE_TTL_HOURS,
 } from "@/lib/tenant-invitations";
 import { awardXp } from "@/lib/gamification";
+import { activePortfolioId, ensurePortfolioForUser } from "@/lib/portfolios";
 import { syncUnitStatus } from "../leases/actions";
 
 export type ActionState = { error: string } | null;
+
+/**
+ * The roster belongs to the portfolio, so every tenant write is scoped to the
+ * portfolio in context — a co-owner edits the same roster as the owner, which
+ * is exactly why the old "co-owner's tenant" read-only silo is gone.
+ */
+async function scopedPortfolioId(userId: string): Promise<string | null> {
+  return activePortfolioId(userId);
+}
 
 function appUrl(): string {
   // AUTH_URL is the deployment's canonical origin.
@@ -51,9 +61,13 @@ export async function createTenantAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid tenant data." };
   }
 
+  // A new tenant lands in the portfolio in context; the creator is still
+  // recorded so authorship survives.
+  const portfolioId = await ensurePortfolioForUser(session.user.id);
+
   await db
     .insert(tenants)
-    .values({ ...parsed.data, userId: session.user.id });
+    .values({ ...parsed.data, userId: session.user.id, portfolioId });
 
   await awardXp(session.user.id, "tenant_created");
   revalidateTenantPaths();
@@ -77,10 +91,13 @@ export async function updateTenantAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid tenant data." };
   }
 
+  const portfolioId = await scopedPortfolioId(session.user.id);
+  if (!portfolioId) return { error: "Tenant not found." };
+
   const updated = await db
     .update(tenants)
     .set(parsed.data)
-    .where(and(eq(tenants.id, tenantId), eq(tenants.userId, session.user.id)))
+    .where(and(eq(tenants.id, tenantId), eq(tenants.portfolioId, portfolioId)))
     .returning({ id: tenants.id });
   if (!updated.length) return { error: "Tenant not found." };
 
@@ -94,10 +111,13 @@ export async function deleteTenantAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
+  const portfolioId = await scopedPortfolioId(session.user.id);
+  if (!portfolioId) return { error: "Tenant not found." };
+
   const owned = await db
     .select({ id: tenants.id })
     .from(tenants)
-    .where(and(eq(tenants.id, tenantId), eq(tenants.userId, session.user.id)))
+    .where(and(eq(tenants.id, tenantId), eq(tenants.portfolioId, portfolioId)))
     .limit(1);
   if (!owned.length) return { error: "Tenant not found." };
 
@@ -140,11 +160,14 @@ export async function sendPortalInviteAction(
     return { error: "Missing tenant id." };
   }
 
-  // Roster entries are per-landlord — only the creator may grant access.
+  // Roster entries are per-portfolio — only members may grant portal access.
+  const portfolioId = await scopedPortfolioId(session.user.id);
+  if (!portfolioId) return { error: "Tenant not found." };
+
   const [tenant] = await db
     .select()
     .from(tenants)
-    .where(and(eq(tenants.id, tenantId), eq(tenants.userId, session.user.id)))
+    .where(and(eq(tenants.id, tenantId), eq(tenants.portfolioId, portfolioId)))
     .limit(1);
   if (!tenant) return { error: "Tenant not found." };
   if (tenant.accountId) {
@@ -225,10 +248,13 @@ export async function revokePortalAccessAction(
   const session = await auth();
   if (!session?.user) return { error: "You must be signed in." };
 
+  const portfolioId = await scopedPortfolioId(session.user.id);
+  if (!portfolioId) return { error: "Tenant not found." };
+
   const [tenant] = await db
     .select({ id: tenants.id, accountId: tenants.accountId })
     .from(tenants)
-    .where(and(eq(tenants.id, tenantId), eq(tenants.userId, session.user.id)))
+    .where(and(eq(tenants.id, tenantId), eq(tenants.portfolioId, portfolioId)))
     .limit(1);
   if (!tenant) return { error: "Tenant not found." };
 

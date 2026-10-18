@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { CODE_LENGTH, verifyRegistrationCode } from "@/lib/email-verification";
+import { ensurePortfolioForUser } from "@/lib/portfolios";
 
 const verifySchema = z.object({
   email: z.string().email(),
@@ -65,14 +66,22 @@ export async function POST(request: Request) {
       );
     }
 
-    await db.insert(users).values({
-      name,
-      email: address,
-      passwordHash,
-      // Reaching here means the address was proven, so the account starts
-      // verified rather than carrying a pending flag the app never checks.
-      emailVerified: new Date(),
-    });
+    const [created] = await db
+      .insert(users)
+      .values({
+        name,
+        email: address,
+        passwordHash,
+        // Reaching here means the address was proven, so the account starts
+        // verified rather than carrying a pending flag the app never checks.
+        emailVerified: new Date(),
+      })
+      .returning({ id: users.id });
+
+    // Landlords get their portfolio up front, silently. It's the bucket that
+    // owns properties, tenants and custom fields, and it means an invite can
+    // find them the moment they land.
+    if (created?.id) await ensurePortfolioForUser(created.id);
 
     return NextResponse.json({ email: address }, { status: 201 });
   } catch (error) {

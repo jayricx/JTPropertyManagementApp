@@ -31,6 +31,7 @@ import {
 } from "@/components/maintenance/request-media";
 import { MaintenanceRowActions } from "@/components/maintenance/maintenance-row-actions";
 import { accessiblePropertyIds, manageablePropertyIds } from "@/lib/access";
+import { activePortfolioId } from "@/lib/portfolios";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   maintenancePriorityLabels,
@@ -67,9 +68,10 @@ export default async function MaintenancePage() {
 
   // Requests are scoped to shared properties, so owner and co-owner both
   // see everything filed there — but only they can act on it (viewers read).
-  const [accessibleIds, manageableIds] = await Promise.all([
+  const [accessibleIds, manageableIds, portfolioId] = await Promise.all([
     accessiblePropertyIds(userId),
     manageablePropertyIds(userId),
+    activePortfolioId(userId),
   ]);
   const canManageAny = manageableIds.length > 0;
   const manageableSet = new Set(manageableIds);
@@ -122,7 +124,7 @@ export default async function MaintenancePage() {
         lastName: tenants.lastName,
       })
       .from(tenants)
-      .where(eq(tenants.userId, userId))
+      .where(eq(tenants.portfolioId, portfolioId ?? ""))
       .orderBy(asc(tenants.lastName), asc(tenants.firstName)),
   ]);
 

@@ -117,13 +117,74 @@ export const propertyTypeEnum = pgEnum("property_type", [
   "other",
 ]);
 
+// ---------------------------------------------------------------------------
+// Portfolios — the central bucket. Properties, leases, tenants and
+// custom-field definitions belong to a portfolio; accounts are granted
+// access through `portfolio_members` with a role. One portfolio per user is
+// provisioned silently, so a solo owner never sees this concept unless they
+// invite a co-owner or create a second portfolio.
+// ---------------------------------------------------------------------------
+
+export const portfolioRoleEnum = pgEnum("portfolio_role", [
+  "owner",
+  "co_owner",
+  "viewer",
+]);
+
+export const portfolios = pgTable(
+  "portfolios",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    /**
+     * The paying account. RESTRICT, never CASCADE: an account that owns a
+     * portfolio cannot be deleted until ownership moves or the portfolio is
+     * deleted deliberately. Always has a matching `owner` membership row.
+     */
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("portfolios_owner_user_id_idx").on(t.ownerUserId)],
+);
+
+/**
+ * Portfolio access. `owner` is full control (including field definitions,
+ * members and payout details), `co_owner` manages properties/tenants/leases
+ * and custom-field *values*, `viewer` is read-only.
+ */
+export const portfolioMembers = pgTable(
+  "portfolio_members",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    portfolioId: uuid("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "restrict" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: portfolioRoleEnum("role").default("co_owner").notNull(),
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("portfolio_members_portfolio_user_key").on(t.portfolioId, t.userId),
+    index("portfolio_members_user_id_idx").on(t.userId),
+  ],
+);
+
 export const properties = pgTable(
   "properties",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    /** The bucket this property belongs to. RESTRICT: never cascade-delete. */
+    portfolioId: uuid("portfolio_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => portfolios.id, { onDelete: "restrict" }),
     name: varchar("name", { length: 255 }).notNull(),
     address: varchar("address", { length: 500 }),
     city: varchar("city", { length: 255 }),
@@ -136,40 +197,7 @@ export const properties = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
   },
-  (t) => [index("properties_user_id_idx").on(t.userId)],
-);
-
-// ---------------------------------------------------------------------------
-// Co-ownership — a property can be shared with other users. Co-owners get
-// full manage access; viewers get read-only access (property managers who
-// should not change records).
-// ---------------------------------------------------------------------------
-
-export const collaboratorRoleEnum = pgEnum("collaborator_role", [
-  "co_owner",
-  "viewer",
-]);
-
-export const propertyCollaborators = pgTable(
-  "property_collaborators",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    propertyId: uuid("property_id")
-      .notNull()
-      .references(() => properties.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    role: collaboratorRoleEnum("role").default("co_owner").notNull(),
-    addedBy: uuid("added_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
-  },
-  (t) => [
-    unique("property_collaborators_property_user_key").on(t.propertyId, t.userId),
-    index("property_collaborators_user_id_idx").on(t.userId),
-  ],
+  (t) => [index("properties_portfolio_id_idx").on(t.portfolioId)],
 );
 
 export const unitStatusEnum = pgEnum("unit_status", [
@@ -259,9 +287,18 @@ export const tenants = pgTable(
   "tenants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /** Who created this roster entry (kept for authorship, not access). */
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * The portfolio that owns this tenant. Access is scoped by membership of
+     * this portfolio, so every member sees the whole roster — a co-owner no
+     * longer meets a read-only "co-owner's tenant" silo.
+     */
+    portfolioId: uuid("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "restrict" }),
     // Portal login: links this roster entry to a user account. The invite
     // flow keeps one tenant profile per account, but the account need not be
     // tenant-role — an owner who rents from another owner is linked too.
@@ -277,7 +314,10 @@ export const tenants = pgTable(
     customFields: text("custom_fields").default("{}").notNull(),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
-  (t) => [index("tenants_user_id_idx").on(t.userId)],
+  (t) => [
+    index("tenants_user_id_idx").on(t.userId),
+    index("tenants_portfolio_id_idx").on(t.portfolioId),
+  ],
 );
 
 export const leaseStatusEnum = pgEnum("lease_status", [
@@ -665,8 +705,9 @@ export const documents = pgTable(
 
 // ---------------------------------------------------------------------------
 // Custom fields — definitions and values per entity (property/lease/tenant).
-// Definitions are scoped to the workspace owner (userId). Values are stored
-// as JSONB on each entity for flexible querying and rendering.
+// Definitions are scoped to the portfolio (`portfolioId`), so every member —
+// including a co-owner — sees exactly the same fields. Values are stored as a
+// JSON string on each entity for flexible querying and rendering.
 // ---------------------------------------------------------------------------
 
 export const customFieldEntityEnum = pgEnum("custom_field_entity", [
@@ -690,11 +731,12 @@ export const customFieldDefinitions = pgTable(
   "custom_field_definitions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    /** The portfolio these fields belong to — every member sees them. */
+    portfolioId: uuid("portfolio_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => portfolios.id, { onDelete: "restrict" }),
     entity: customFieldEntityEnum("entity").notNull(),
-    /** Stable key used as the JSONB key for values. */
+    /** Stable key used as the JSON key for values. */
     key: varchar("key", { length: 64 }).notNull(),
     label: varchar("label", { length: 255 }).notNull(),
     type: customFieldTypeEnum("type").default("text").notNull(),
@@ -705,30 +747,17 @@ export const customFieldDefinitions = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
-    unique("custom_field_definitions_user_entity_key").on(
-      t.userId,
+    unique("custom_field_definitions_portfolio_entity_key").on(
+      t.portfolioId,
       t.entity,
       t.key,
     ),
-    index("custom_field_definitions_user_id_idx").on(t.userId),
+    index("custom_field_definitions_portfolio_id_idx").on(t.portfolioId),
   ],
 );
 
 export type CustomFieldDefinition = typeof customFieldDefinitions.$inferSelect;
 export type NewCustomFieldDefinition = typeof customFieldDefinitions.$inferInsert;
-
-// Add customFields JSONB columns to entities.
-export const customFieldsProperty = {
-  customFields: text("custom_fields").default("{}").notNull(),
-};
-export const customFieldsLease = {
-  customFields: text("custom_fields").default("{}").notNull(),
-};
-export const customFieldsTenant = {
-  customFields: text("custom_fields").default("{}").notNull(),
-};
-
-// We'll add these as columns below. Let us patch the table definitions next.
 
 export const notifications = pgTable(
   "notifications",

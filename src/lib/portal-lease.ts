@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { bankAccounts, leases, properties, tenants, units, users } from "@/db/schema";
+import { bankAccounts, leases, portfolios, properties, tenants, units, users } from "@/db/schema";
 import { getLeaseStatement, type LeaseStatement } from "@/lib/statements";
 import { isUuid } from "@/lib/utils";
 
@@ -71,14 +71,17 @@ export async function loadPayableLease(
       rentAmount: leases.rentAmount,
       unitName: units.name,
       propertyName: properties.name,
-      landlordId: properties.userId,
+      // Payout details belong to the portfolio, so the destination is the
+      // portfolio owner — not whoever created the property row.
+      landlordId: portfolios.ownerUserId,
       gcashNumber: users.gcashNumber,
       gcashName: users.gcashName,
     })
     .from(leases)
     .innerJoin(units, eq(leases.unitId, units.id))
     .innerJoin(properties, eq(units.propertyId, properties.id))
-    .innerJoin(users, eq(properties.userId, users.id))
+    .innerJoin(portfolios, eq(properties.portfolioId, portfolios.id))
+    .innerJoin(users, eq(portfolios.ownerUserId, users.id))
     .where(and(eq(leases.id, leaseId), eq(leases.tenantId, tenant.id)))
     .limit(1);
   if (!lease || lease.status !== "active") return null;

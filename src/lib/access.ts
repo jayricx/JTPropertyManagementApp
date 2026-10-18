@@ -1,33 +1,60 @@
-import { and, asc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { leases, properties, propertyCollaborators, units } from "@/db/schema";
+import { leases, properties, units } from "@/db/schema";
+import {
+  activePortfolioId,
+  isPortfolioOwner,
+  portfolioIdsFor,
+  portfoliosForUser,
+} from "@/lib/portfolios";
 
 /**
- * Co-ownership access helpers. A user can access a property when they own it
- * or when they've been added as a collaborator. Access has two tiers:
+ * Access helpers. A portfolio is the bucket that owns properties, units,
+ * leases and tenants; an account reaches it through `portfolio_members` with
+ * a role (see `src/lib/portfolios.ts`). Access has two tiers:
  *
- * - READ (all helpers below): owned, co_owner, or viewer — pages, lists, KPIs.
- * - MANAGE (`canManage*`): owned or co_owner only — every create/update/delete
- *   action funnels through those so viewers stay read-only.
+ * - READ (all helpers below): any member — pages, lists, KPIs.
+ * - MANAGE (`canManage*`): `owner` or `co_owner` only — every create/update/
+ *   delete action funnels through those so viewers stay read-only.
+ *
+ * Every helper below resolves through the *active* portfolio, so a user with
+ * several portfolios sees one at a time and the call sites never had to
+ * change. `accessiblePropertyIdsAcrossPortfolios` is the explicit escape hatch
+ * for the few places that genuinely need the union.
  */
 export type PropertyAccess = "owner" | "co_owner" | "viewer" | null;
 
-/** All property ids the user can access: owned + co-owned. */
+const empty: string[] = [];
+
+/** Property ids in the active portfolio — everything the user can read. */
 export async function accessiblePropertyIds(userId: string): Promise<string[]> {
-  const [owned, shared] = await Promise.all([
-    db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(eq(properties.userId, userId)),
-    db
-      .select({ propertyId: propertyCollaborators.propertyId })
-      .from(propertyCollaborators)
-      .where(eq(propertyCollaborators.userId, userId)),
-  ]);
-  return [...owned.map((r) => r.id), ...shared.map((r) => r.propertyId)];
+  const portfolioId = await activePortfolioId(userId);
+  if (!portfolioId) return empty;
+  const rows = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.portfolioId, portfolioId));
+  return rows.map((r) => r.id);
 }
 
-/** Accessible properties (owned + co-owned) with names, for filter UIs. */
+/**
+ * Property ids across every portfolio the user belongs to. Used by the
+ * portfolio switcher, invite-by-email and account-level settings — not by the
+ * dashboard, which stays scoped to the active portfolio.
+ */
+export async function accessiblePropertyIdsAcrossPortfolios(
+  userId: string,
+): Promise<string[]> {
+  const ids = await portfolioIdsFor(userId);
+  if (!ids.length) return empty;
+  const rows = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(inArray(properties.portfolioId, ids));
+  return rows.map((r) => r.id);
+}
+
+/** Accessible properties with names, for filter UIs. */
 export async function listAccessibleProperties(
   userId: string,
 ): Promise<{ id: string; name: string }[]> {
@@ -40,45 +67,49 @@ export async function listAccessibleProperties(
     .orderBy(asc(properties.name));
 }
 
-/** True when the user owns the property outright (not merely co-owns it). */
-export async function isPropertyOwner(
+/** The portfolio that owns a property, or null when it doesn't exist. */
+export async function portfolioIdForProperty(
+  propertyId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ portfolioId: properties.portfolioId })
+    .from(properties)
+    .where(eq(properties.id, propertyId))
+    .limit(1);
+  return row?.portfolioId ?? null;
+}
+
+/**
+ * True when the user may delete a property: only the portfolio's owner can.
+ * (Deleting a property removes units, leases and tenants with it.)
+ */
+export async function canDeleteProperty(
   userId: string,
   propertyId: string,
 ): Promise<boolean> {
-  const rows = await db
-    .select({ id: properties.id })
-    .from(properties)
-    .where(and(eq(properties.id, propertyId), eq(properties.userId, userId)))
-    .limit(1);
-  return rows.length > 0;
+  const portfolioId = await portfolioIdForProperty(propertyId);
+  if (!portfolioId) return false;
+  return isPortfolioOwner(userId, portfolioId);
 }
 
-/** True when the user owns the property or is a co-owner of it. */
+/** True when the user can access any property in the active portfolio. */
 export async function canAccessProperty(
   userId: string,
   propertyId: string,
 ): Promise<boolean> {
-  const rows = await db
+  const portfolioId = await activePortfolioId(userId);
+  if (!portfolioId) return false;
+  const [row] = await db
     .select({ id: properties.id })
     .from(properties)
-    .leftJoin(
-      propertyCollaborators,
-      and(
-        eq(propertyCollaborators.propertyId, properties.id),
-        eq(propertyCollaborators.userId, userId),
-      ),
-    )
     .where(
       and(
         eq(properties.id, propertyId),
-        or(
-          eq(properties.userId, userId),
-          isNotNull(propertyCollaborators.id),
-        ),
+        eq(properties.portfolioId, portfolioId),
       ),
     )
     .limit(1);
-  return rows.length > 0;
+  return row !== undefined;
 }
 
 /** True when the unit belongs to a property the user can access. */
@@ -107,88 +138,68 @@ export async function canAccessLease(
     .select({ id: leases.id })
     .from(leases)
     .innerJoin(units, eq(leases.unitId, units.id))
-    .where(
-      and(eq(leases.id, leaseId), inArray(units.propertyId, ids)),
-    )
+    .where(and(eq(leases.id, leaseId), inArray(units.propertyId, ids)))
     .limit(1);
   return rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
-// Manage tier — owner or co_owner only (viewers are excluded).
+// Manage tier — owner or co_owner in the active portfolio (viewers excluded).
 // ---------------------------------------------------------------------------
 
-/** Property ids the user can create/update records on: owned + co-owned. */
-export async function manageablePropertyIds(userId: string): Promise<string[]> {
-  const [owned, shared] = await Promise.all([
-    db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(eq(properties.userId, userId)),
-    db
-      .select({ propertyId: propertyCollaborators.propertyId })
-      .from(propertyCollaborators)
-      .where(
-        and(
-          eq(propertyCollaborators.userId, userId),
-          eq(propertyCollaborators.role, "co_owner"),
-        ),
-      ),
-  ]);
-  return [...owned.map((r) => r.id), ...shared.map((r) => r.propertyId)];
-}
-
-/** The user's role on a property: owner, co_owner, viewer, or null. */
-export async function getPropertyAccess(
-  userId: string,
-  propertyId: string,
-): Promise<PropertyAccess> {
-  const [owned, collab] = await Promise.all([
-    db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(and(eq(properties.id, propertyId), eq(properties.userId, userId)))
-      .limit(1),
-    db
-      .select({ role: propertyCollaborators.role })
-      .from(propertyCollaborators)
-      .where(
-        and(
-          eq(propertyCollaborators.propertyId, propertyId),
-          eq(propertyCollaborators.userId, userId),
-        ),
-      )
-      .limit(1),
-  ]);
-  if (owned.length) return "owner";
-  if (collab.length) return collab[0].role;
-  return null;
-}
-
-/** True when the user owns or co-owns the property (viewer → false). */
+/** True when the user may edit records on this property. */
 export async function canManageProperty(
   userId: string,
   propertyId: string,
 ): Promise<boolean> {
-  const rows = await db
+  const portfolioId = await activePortfolioId(userId);
+  if (!portfolioId) return false;
+  const role = await roleFor(userId, portfolioId);
+  if (role !== "owner" && role !== "co_owner") return false;
+  const [row] = await db
     .select({ id: properties.id })
     .from(properties)
-    .leftJoin(
-      propertyCollaborators,
-      and(
-        eq(propertyCollaborators.propertyId, properties.id),
-        eq(propertyCollaborators.userId, userId),
-        eq(propertyCollaborators.role, "co_owner"),
-      ),
-    )
     .where(
       and(
         eq(properties.id, propertyId),
-        or(eq(properties.userId, userId), isNotNull(propertyCollaborators.id)),
+        eq(properties.portfolioId, portfolioId),
       ),
     )
     .limit(1);
-  return rows.length > 0;
+  return row !== undefined;
+}
+
+/**
+ * Property ids in the active portfolio the user may create/update records on.
+ * Every member of a portfolio can manage its properties except viewers.
+ */
+export async function manageablePropertyIds(userId: string): Promise<string[]> {
+  const portfolioId = await activePortfolioId(userId);
+  if (!portfolioId) return empty;
+  const role = await roleFor(userId, portfolioId);
+  if (role !== "owner" && role !== "co_owner") return empty;
+  const rows = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.portfolioId, portfolioId));
+  return rows.map((r) => r.id);
+}
+
+/**
+ * The user's role on a property — which is now just their portfolio role, the
+ * portfolio being the unit of access.
+ *
+ * A property outside the portfolio currently in view reads as "no access" so
+ * the detail page and the list can never disagree about what a user can manage.
+ */
+export async function getPropertyAccess(
+  userId: string,
+  propertyId: string,
+): Promise<PropertyAccess> {
+  const portfolioId = await portfolioIdForProperty(propertyId);
+  if (!portfolioId) return null;
+  if ((await activePortfolioId(userId)) !== portfolioId) return null;
+  return roleFor(userId, portfolioId);
 }
 
 /** True when the unit belongs to a property the user can manage. */
@@ -220,4 +231,13 @@ export async function canManageLease(
     .where(and(eq(leases.id, leaseId), inArray(units.propertyId, ids)))
     .limit(1);
   return rows.length > 0;
+}
+
+/** Internal: the role without the extra portfolio lookups the UI does. */
+async function roleFor(
+  userId: string,
+  portfolioId: string,
+): Promise<PropertyAccess> {
+  const rows = await portfoliosForUser(userId);
+  return rows.find((r) => r.id === portfolioId)?.role ?? null;
 }

@@ -1,12 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { TenantForm } from "@/components/tenants/tenant-form";
 import { PortalAccessCard } from "@/components/tenants/portal-access-card";
 import { isUuid } from "@/lib/utils";
+import {
+  canManagePortfolio,
+  roleInPortfolio,
+} from "@/lib/portfolios";
+import {
+  definitionsFor,
+  parseCustomFields,
+} from "@/lib/custom-fields";
+import { CustomFieldsCard } from "@/components/custom-fields/custom-fields-card";
 
 interface EditTenantPageProps {
   params: Promise<{ id: string }>;
@@ -20,12 +29,25 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
   const userId = session?.user?.id;
   if (!userId) return null; // layout redirects unauthenticated visitors
 
+  // The roster belongs to the portfolio, so "the landlord who created this
+  // tenant" is no longer the gate — any owner/co-owner in that portfolio may
+  // edit, and a viewer still may not.
   const [tenant] = await db
     .select()
     .from(tenants)
-    .where(and(eq(tenants.id, id), eq(tenants.userId, userId)))
+    .where(eq(tenants.id, id))
     .limit(1);
   if (!tenant) notFound();
+  if (!(await canManagePortfolio(userId, tenant.portfolioId))) notFound();
+
+  // Fields come from the portfolio so the whole team sees the same ones.
+  const role = await roleInPortfolio(userId, tenant.portfolioId);
+  const canManage = role === "owner" || role === "co_owner";
+  const canDefine = role === "owner";
+  const [tenantFieldDefs, tenantFieldValues] = await Promise.all([
+    definitionsFor(tenant.portfolioId, "tenant"),
+    Promise.resolve(parseCustomFields(tenant.customFields)),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -44,6 +66,14 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
           phone: tenant.phone ?? "",
           notes: tenant.notes ?? "",
         }}
+      />
+      <CustomFieldsCard
+        entity="tenant"
+        targetId={tenant.id}
+        definitions={tenantFieldDefs}
+        values={tenantFieldValues}
+        canEdit={canManage}
+        canDefine={canDefine}
       />
       <PortalAccessCard
         tenantId={tenant.id}

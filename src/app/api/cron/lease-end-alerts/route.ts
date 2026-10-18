@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, gte, isNotNull, isNull, lte } from "drizzle-orm";
 import { db } from "@/db/client";
-import { leases, properties, tenants, units, users } from "@/db/schema";
+import { leases, portfolios, properties, tenants, units, users } from "@/db/schema";
 import { sendLeaseEndAlerts } from "@/lib/email";
 
 // Data changes on every run — never cache this route.
@@ -48,7 +48,10 @@ export async function GET(request: Request) {
     .innerJoin(tenants, eq(leases.tenantId, tenants.id))
     .innerJoin(units, eq(leases.unitId, units.id))
     .innerJoin(properties, eq(units.propertyId, properties.id))
-    .innerJoin(users, eq(properties.userId, users.id))
+    // Reminders go to the portfolio owner — the account that actually manages
+    // the property, whoever created the row.
+    .innerJoin(portfolios, eq(properties.portfolioId, portfolios.id))
+    .innerJoin(users, eq(portfolios.ownerUserId, users.id))
     .where(
       and(
         eq(leases.status, "active"),

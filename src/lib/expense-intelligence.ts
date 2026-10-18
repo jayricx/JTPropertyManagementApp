@@ -1,6 +1,7 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { expenses } from "@/db/schema";
+import { accessiblePropertyIds } from "@/lib/access";
 import { aiJson, clampNumber, type AiSource } from "@/lib/ai";
 import {
   expenseCategories,
@@ -77,18 +78,22 @@ export async function suggestExpenseCategory({
   const cleanVendor = vendor.trim();
   const haystack = `${cleanVendor} ${notes}`.trim().toLowerCase();
 
-  // 1. History — what did this vendor cost before?
+  // 1. History — what did this vendor cost before? Scoped to the properties
+  // in context, not the creator, so a co-owner's spending counts too.
   if (cleanVendor.length >= 3) {
-    const past = await db
-      .select({ category: expenses.category })
-      .from(expenses)
-      .where(
-        and(
-          eq(expenses.userId, userId),
-          sql`lower(${expenses.vendor}) = ${cleanVendor.toLowerCase()}`,
-        ),
-      )
-      .limit(50);
+    const propertyIds = await accessiblePropertyIds(userId);
+    const past = propertyIds.length
+      ? await db
+          .select({ category: expenses.category })
+          .from(expenses)
+          .where(
+            and(
+              inArray(expenses.propertyId, propertyIds),
+              sql`lower(${expenses.vendor}) = ${cleanVendor.toLowerCase()}`,
+            ),
+          )
+          .limit(50)
+      : [];
     if (past.length > 0) {
       const counts = new Map<ExpenseCategory, number>();
       for (const row of past) {
@@ -148,16 +153,25 @@ export async function suggestExpenseCategory({
   };
 }
 
-/** Distinct categories this landlord already uses — fed to the model. */
+/**
+ * Distinct categories this landlord already uses — fed to the model.
+ *
+ * Scoped to the properties in context rather than to the creator, so a
+ * co-owner's expenses inform the suggestions too (previously each member only
+ * saw their own history, and the owner's suggestions ignored the co-owner's).
+ */
 export async function categoryHistory(
   userId: string,
 ): Promise<{ category: ExpenseCategory; count: number }[]> {
-  const rows = await db
-    .select({ category: expenses.category, count: sql<number>`count(*)::int` })
-    .from(expenses)
-    .where(eq(expenses.userId, userId))
-    .groupBy(expenses.category)
-    .orderBy(desc(sql`count(*)`));
+  const propertyIds = await accessiblePropertyIds(userId);
+  const rows = propertyIds.length
+    ? await db
+        .select({ category: expenses.category, count: sql<number>`count(*)::int` })
+        .from(expenses)
+        .where(inArray(expenses.propertyId, propertyIds))
+        .groupBy(expenses.category)
+        .orderBy(desc(sql`count(*)`))
+    : [];
   return rows.map((r) => ({
     category: r.category as ExpenseCategory,
     count: Number(r.count),

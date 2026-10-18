@@ -6,6 +6,7 @@ import {
   documents,
   leases,
   maintenanceRequests,
+  portfolios,
   payments,
   properties,
   tenants,
@@ -225,7 +226,9 @@ export default async function TenantPortalPage({
         db
           .select({ name: users.name })
           .from(properties)
-          .innerJoin(users, eq(properties.userId, users.id))
+          // The portfolio owner is who the tenant deals with.
+          .innerJoin(portfolios, eq(properties.portfolioId, portfolios.id))
+          .innerJoin(users, eq(portfolios.ownerUserId, users.id))
           .where(eq(properties.id, active.propertyId))
           .limit(1)
           .then((rows) => rows[0]?.name ?? "Your landlord"),

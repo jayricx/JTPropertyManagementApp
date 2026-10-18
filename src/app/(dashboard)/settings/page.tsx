@@ -1,9 +1,16 @@
 import { desc, eq } from "drizzle-orm";
-import { KeyRoundIcon, LandmarkIcon, MailIcon, SmartphoneIcon } from "lucide-react";
+import {
+  KeyRoundIcon,
+  LandmarkIcon,
+  MailIcon,
+  SlidersHorizontalIcon,
+  SmartphoneIcon,
+  UsersIcon,
+} from "lucide-react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { bankAccounts, users } from "@/db/schema";
+import { bankAccounts, portfolioMembers, users } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import { googleSignInEnabled } from "@/lib/auth-providers";
 import { emailDiagnostics } from "@/lib/email";
@@ -13,7 +20,14 @@ import {
   BankAccountsManager,
   type BankAccountRow,
 } from "@/components/settings/bank-accounts-card";
+import {
+  PortfolioMembersCard,
+  type MemberRow,
+} from "@/components/settings/portfolio-members-card";
+import { CustomFieldsOverview, type DefinitionRow } from "@/components/custom-fields/custom-fields-overview";
+import { definitionsFor } from "@/lib/custom-fields";
 import { getPlanUsage } from "@/lib/plan-usage";
+import { activePortfolio } from "@/lib/portfolios";
 import { PlanUsageMeter } from "@/components/plans/plan-usage-meter";
 import {
   Card,
@@ -48,6 +62,51 @@ export default async function SettingsPage() {
     .orderBy(desc(bankAccounts.createdAt));
 
   const usage = await getPlanUsage(session.user.id);
+
+  // Members and custom fields are portfolio-scoped; the portfolio is created
+  // silently on signup, but a pre-portfolio account may not have one yet.
+  const portfolio = await activePortfolio(session.user.id);
+  const memberRecords = portfolio
+    ? await db
+        .select({
+          id: portfolioMembers.id,
+          name: users.name,
+          email: users.email,
+          role: portfolioMembers.role,
+          createdAt: portfolioMembers.createdAt,
+        })
+        .from(portfolioMembers)
+        .innerJoin(users, eq(users.id, portfolioMembers.userId))
+        .where(eq(portfolioMembers.portfolioId, portfolio.id))
+        .orderBy(desc(portfolioMembers.createdAt))
+    : [];
+  const memberRows: MemberRow[] = memberRecords.map((m) => ({
+    id: m.id,
+    name: m.name,
+    email: m.email,
+    role: m.role,
+    joinedAt: m.createdAt.toISOString(),
+    isYou: m.email === session.user.email,
+  }));
+
+  const definitionRows: DefinitionRow[] = portfolio
+    ? (
+        await Promise.all(
+          (["property", "lease", "tenant"] as const).map((entity) =>
+            definitionsFor(portfolio.id, entity),
+          ),
+        )
+      )
+        .flat()
+        .map((d) => ({
+          id: d.id,
+          entity: d.entity,
+          key: d.key,
+          label: d.label,
+          type: d.type,
+          required: d.required,
+        }))
+    : [];
 
   const googleEnabled = googleSignInEnabled();
   const googleRedirectUrl = `${appUrl()}/api/auth/callback/google`;
@@ -107,6 +166,59 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <BankAccountsManager accounts={bankRows as BankAccountRow[]} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UsersIcon className="size-5" /> Portfolio members
+          </CardTitle>
+          <CardDescription>
+            {portfolio
+              ? `People who can work in this portfolio. One invite covers all ${portfolio.propertyCount} propert${portfolio.propertyCount === 1 ? "y" : "ies"}, their tenants and leases, and the custom fields below.`
+              : "People who can work in this portfolio."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {portfolio && memberRows.length > 0 ? (
+            <PortfolioMembersCard
+              portfolioId={portfolio.id}
+              propertyCount={portfolio.propertyCount}
+              members={memberRows}
+              canManage={portfolio.role === "owner"}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No portfolio yet — it&rsquo;s created the moment you add a
+              property.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <SlidersHorizontalIcon className="size-5" /> Custom fields
+          </CardTitle>
+          <CardDescription>
+            Extra details you keep on your properties, leases and tenants —
+            gate codes, meter numbers, parking slots. Everyone in this portfolio
+            uses the same fields; you can add or change them, a co-owner fills
+            them in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {portfolio && portfolio.role === "owner" ? (
+            <CustomFieldsOverview definitions={definitionRows} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {portfolio && portfolio.propertyCount === 0
+                ? "Add a property, tenant or lease first — fields are attached to those."
+                : "Only the portfolio owner can add or change custom fields. You'll see each one on the property, lease and tenant pages."}
+            </p>
+          )}
         </CardContent>
       </Card>
 
