@@ -44,6 +44,12 @@ export const users = pgTable("users", {
   // Tenants send rent to this wallet and submit the reference number.
   gcashNumber: varchar("gcash_number", { length: 20 }),
   gcashName: varchar("gcash_name", { length: 255 }),
+  /**
+   * The people who run RentBase-PH. Not a permission on landlord data — a
+   * landlord's own portfolio still only shows them their own records — it just
+   * unlocks the feature-request inbox and the public roadmap.
+   */
+  isAdmin: boolean("is_admin").default(false).notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -770,6 +776,86 @@ export const customFieldDefinitions = pgTable(
 
 export type CustomFieldDefinition = typeof customFieldDefinitions.$inferSelect;
 export type NewCustomFieldDefinition = typeof customFieldDefinitions.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Feature requests — what landlords ask for. Submissions are private to the
+// person who wrote them and the owner; only requests the owner promotes with
+// `isPublic` appear on the public roadmap, and never with an identity
+// attached. `portfolioId` and `planAtSubmission` are the triage signal: how
+// much rent this ask might touch, and who is asking for it.
+// ---------------------------------------------------------------------------
+
+export const featureRequestCategoryEnum = pgEnum("feature_request_category", [
+  "properties",
+  "leases",
+  "tenants",
+  "rent_collection",
+  "maintenance",
+  "reports",
+  "tenant_portal",
+  "integrations",
+  "other",
+]);
+
+export const featureRequestStatusEnum = pgEnum("feature_request_status", [
+  "submitted",
+  "under_review",
+  "planned",
+  "shipped",
+  "declined",
+]);
+
+export const featureRequests = pgTable(
+  "feature_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** The landlord who wrote it. */
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The portfolio they were in when they asked — sizes the ask. */
+    portfolioId: uuid("portfolio_id").references(() => portfolios.id, {
+      onDelete: "set null",
+    }),
+    category: featureRequestCategoryEnum("category").default("other").notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    details: text("details").notNull(),
+    status: featureRequestStatusEnum("status").default("submitted").notNull(),
+    /** Snapshot, not a live join: the plan when they asked is the signal. */
+    planAtSubmission: varchar("plan_at_submission", { length: 32 }),
+    /** Curated by the owner to appear on the public roadmap. */
+    isPublic: boolean("is_public").default(false).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("feature_requests_user_id_idx").on(t.userId),
+    index("feature_requests_status_idx").on(t.status),
+    index("feature_requests_public_idx").on(t.isPublic),
+  ],
+);
+
+/**
+ * Status history. Each row is something the submitter is told about, so the
+ * note is public-facing — there is no separate internal note by design.
+ */
+export const featureRequestUpdates = pgTable(
+  "feature_request_updates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => featureRequests.id, { onDelete: "cascade" }),
+    status: featureRequestStatusEnum("status").notNull(),
+    note: text("note"),
+    /** Null for the automatic "submitted" entry. */
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("feature_request_updates_request_id_idx").on(t.requestId)],
+);
 
 export const notifications = pgTable(
   "notifications",

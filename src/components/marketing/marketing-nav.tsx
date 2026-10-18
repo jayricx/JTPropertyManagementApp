@@ -27,6 +27,12 @@ export function MarketingNav() {
             Pricing
           </Link>
           <Link
+            href="/roadmap"
+            className="rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            Roadmap
+          </Link>
+          <Link
             href="/guides"
             className="rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >

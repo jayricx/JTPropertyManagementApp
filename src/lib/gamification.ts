@@ -28,6 +28,7 @@ export const XP_REWARDS = {
   maintenance_created: 10,
   maintenance_resolved: 25,
   portal_granted: 15,
+  feature_requested: 10,
 } as const;
 
 export type XpType = keyof typeof XP_REWARDS;

@@ -372,6 +372,43 @@ export interface VerificationCodeEmail {
   expiresInMinutes: number;
 }
 
+export interface FeatureRequestUpdateEmail {
+  to: string;
+  name: string | null;
+  requestTitle: string;
+  statusLabel: string;
+  /** The owner's note to the submitter, if any. */
+  note: string | null;
+}
+
+/**
+ * Tell a landlord what happened to their feature request. This is the whole
+ * point of collecting them: a request box that never answers reads as a black
+ * hole, and people stop trusting the channel after one try.
+ */
+export async function sendFeatureRequestUpdateEmail(
+  r: FeatureRequestUpdateEmail,
+): Promise<SendResult> {
+  const title = escapeHtml(r.requestTitle);
+  const statusLabel = escapeHtml(r.statusLabel);
+  const note = r.note ? escapeHtml(r.note) : null;
+  const feedbackUrl = `${APP_URL}/feedback`;
+
+  return sendEmail({
+    to: r.to,
+    subject: `Your feature request: ${r.statusLabel}`,
+    text: `Hi${r.name ? ` ${r.name}` : ""},\n\nThere's an update on your feature request "${r.requestTitle}":\n\nStatus: ${r.statusLabel}${r.note ? `\n\n${r.note}` : ""}\n\nView it: ${feedbackUrl}\n\n— RentBase-PH`,
+    html: emailShell(
+      `Update on your request`,
+      `<p>Hi${r.name ? ` ${escapeHtml(r.name)}` : ""},</p>
+       <p>There's an update on your feature request <strong>${title}</strong>:</p>
+       <p style="margin:16px 0;padding:12px 16px;border:1px solid #e5e7eb;border-radius:8px;"><strong>${statusLabel}</strong></p>
+       ${note ? `<p>${note}</p>` : ""}
+       <p><a href="${feedbackUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View my requests</a></p>`,
+    ),
+  });
+}
+
 /**
  * The registration code. The digits are rendered large and spaced out because
  * they get read off a phone and typed back in by hand.
