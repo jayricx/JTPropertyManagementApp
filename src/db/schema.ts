@@ -18,7 +18,12 @@ import {
 // ---------------------------------------------------------------------------
 
 export const userRoleEnum = pgEnum("user_role", ["landlord", "tenant"]);
-export const planTierEnum = pgEnum("plan_tier", ["free", "pro", "business"]);
+export const planTierEnum = pgEnum("plan_tier", [
+  "free",
+  "starter",
+  "pro",
+  "business",
+]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),

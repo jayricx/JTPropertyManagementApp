@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { PLAN_LABELS, PLAN_PRICES, PLAN_UNIT_LIMITS } from "@/lib/plans";
+import { PLAN_LABELS, PLAN_PRICES, PLAN_TIERS, PLAN_UNIT_LIMITS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 const TIER_FEATURES = {
@@ -21,13 +21,20 @@ const TIER_FEATURES = {
     "Tenant portal invites",
     "Health score & badges",
   ],
+  starter: [
+    "Up to 10 units",
+    "Everything in Free",
+    "Co-owner collaboration",
+    "Portfolio custom fields",
+    "Reports & CSV export",
+  ],
   pro: [
     "Up to 20 units",
-    "Everything in Free",
-    "Reports & CSV export",
+    "Everything in Starter",
     "Lease-end alerts",
     "Lease attachments & notes",
-    "Co-owner collaboration",
+    "GCash & bank transfer",
+    "Receipt photos",
   ],
   business: [
     "Up to 100 units",
@@ -36,7 +43,7 @@ const TIER_FEATURES = {
     "E-signature (coming soon)",
     "AI insights (coming soon)",
   ],
-} as const;
+} as const satisfies Record<(typeof PLAN_TIERS)[number], readonly string[]>;
 
 export default async function PricingPage() {
   const session = await auth();
@@ -54,13 +61,14 @@ export default async function PricingPage() {
         </p>
       </section>
       <section className="px-6 pb-16">
-        <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
-          {["free", "pro", "business"].map((tier) => {
+        <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {PLAN_TIERS.map((tier) => {
             const key = tier as keyof typeof PLAN_LABELS;
             const planLabel = PLAN_LABELS[key];
             const prices = PLAN_PRICES[key];
             const limit = PLAN_UNIT_LIMITS[key];
-            const limitText = limit === null ? "Unlimited units" : `Up to ${limit} units`;
+            const limitText =
+              limit === null ? "Unlimited units" : `Up to ${limit} units`;
             const isCurrent = userPlan === key;
             const isPro = key === "pro";
             return (
@@ -73,7 +81,9 @@ export default async function PricingPage() {
                     <span className="ml-2 text-muted-foreground">/month</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    ₱{prices.annual} / year (2 months free)
+                    {prices.monthly === 0
+                      ? "Free forever"
+                      : `₱${prices.annual} / year (2 months free)`}
                   </p>
                 </CardHeader>
                 <CardContent>
