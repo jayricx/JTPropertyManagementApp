@@ -91,7 +91,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-3xl text-center">
           <p className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
             <BadgeCheck className="size-3.5" />
-            Built in the Philippines, not translated into it
+            Built in the Philippines
           </p>
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             Property management for Filipino landlords
