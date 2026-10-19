@@ -1,16 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 64" role="img" aria-label="Renta-PH">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 216 64" role="img" aria-label="Renta-PH">
   <defs>
     <linearGradient id="badge" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1e3a8a"/>
-      <stop offset="1" stop-color="#3b82f6"/>
+      <stop offset="0" stop-color="#065f46"/>
+      <stop offset="1" stop-color="#10b981"/>
     </linearGradient>
   </defs>
   <!-- Mark -->
   <rect width="64" height="64" rx="14" fill="url(#badge)"/>
-  <path d="M13 30 L32 14 L51 30" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="45.5" cy="24" r="3" fill="#f59e0b"/>
-  <text x="32" y="53" text-anchor="middle" font-family="'Segoe UI Black', 'Arial Black', 'Segoe UI', Arial, sans-serif" font-size="25" font-weight="900" fill="#ffffff">JT</text>
+  <path d="M11 29.5 L32 12 L53 29.5" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24 52 V33.5"/>
+    <path d="M24 33.5 H33.5 a7.25 7.25 0 0 1 0 14.5 H24"/>
+    <path d="M24 40.5 H36.5"/>
+    <path d="M24 46 H36.5"/>
+  </g>
   <!-- Wordmark -->
-  <text x="76" y="31" font-family="'Segoe UI', Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#0f172a"><tspan fill="#2563eb">JT</tspan> Property</text>
-  <text x="77" y="50" font-family="'Segoe UI', Arial, Helvetica, sans-serif" font-size="12" font-weight="600" letter-spacing="4.2" fill="#475569">MANAGEMENT</text>
+  <text x="76" y="34" font-family="'Segoe UI', Arial, Helvetica, sans-serif" font-size="27" font-weight="700" fill="#0f172a">Renta<tspan fill="#059669">-PH</tspan></text>
+  <text x="77" y="52" font-family="'Segoe UI', Arial, Helvetica, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#64748b">PROPERTY MANAGEMENT</text>
 </svg>
