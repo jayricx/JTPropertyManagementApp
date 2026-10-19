@@ -129,7 +129,22 @@ export default async function LeasesPage() {
               <TableBody>
                 {rows.map((l) => (
                   <TableRow key={l.id}>
-                    <TableCell className="font-medium">{l.tenantName}</TableCell>
+                    <TableCell className="font-medium">
+                      {/* The name is the link. That page is the lease's whole
+                          record — form, statement, contract, signatures, notes,
+                          attachments — so "Edit" was the wrong label, and a
+                          viewer must not be offered a link that 404s. */}
+                      {manageableSet.has(l.propertyId) ? (
+                        <Link
+                          href={`/leases/${l.id}/edit`}
+                          className="hover:underline"
+                        >
+                          {l.tenantName}
+                        </Link>
+                      ) : (
+                        l.tenantName
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div>{l.unitName}</div>
                       <div className="text-xs text-muted-foreground">
@@ -170,12 +185,9 @@ export default async function LeasesPage() {
                     {canManageAny && (
                       <TableCell>
                         {manageableSet.has(l.propertyId) ? (
+                          /* Delete stays a button in its own right: the one
+                             action here that isn't "go look at this lease". */
                           <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              render={<Link href={`/leases/${l.id}/edit`}>Edit</Link>}
-                            />
                             <DeleteLeaseButton
                               leaseId={l.id}
                               leaseLabel={`${l.tenantName} — ${l.unitName}`}

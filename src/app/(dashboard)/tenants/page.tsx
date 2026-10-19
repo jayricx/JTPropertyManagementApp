@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { DeleteTenantButton } from "@/components/tenants/delete-tenant-button";
 import { accessiblePropertyIds } from "@/lib/access";
-import { activePortfolioId } from "@/lib/portfolios";
+import { activePortfolioId, canManagePortfolio } from "@/lib/portfolios";
 
 export default async function TenantsPage() {
   const session = await auth();
@@ -48,6 +48,7 @@ export default async function TenantsPage() {
   const rows = await db
     .select({
       id: tenants.id,
+      portfolioId: tenants.portfolioId,
       firstName: tenants.firstName,
       lastName: tenants.lastName,
       email: tenants.email,
@@ -68,6 +69,15 @@ export default async function TenantsPage() {
     )
     .groupBy(tenants.id)
     .orderBy(desc(tenants.createdAt));
+
+  // The tenant page checks `canManagePortfolio` on the tenant's own portfolio,
+  // so the roster has to agree — otherwise a viewer gets a name link that
+  // 404s, which is what the old unconditional Edit button did to them.
+  const managed = new Set<string>();
+  for (const portfolioId of new Set(rows.map((r) => r.portfolioId))) {
+    if (await canManagePortfolio(userId, portfolioId)) managed.add(portfolioId);
+  }
+  const canManage = (portfolioId: string) => managed.has(portfolioId);
 
   return (
     <div className="space-y-6">
@@ -116,7 +126,23 @@ export default async function TenantsPage() {
                   <TableRow key={t.id}>
                     <TableCell className="font-medium">
                       <span className="inline-flex flex-wrap items-center gap-2">
-                        {t.firstName} {t.lastName}
+                        {/* The name is the link, not a separate "Edit" button:
+                            that page is the tenant's whole record — form,
+                            custom fields and portal access — so labelling it
+                            "Edit" undersold it. A viewer, who can't open that
+                            page, gets plain text rather than a link to a 404. */}
+                        {canManage(t.portfolioId) ? (
+                          <Link
+                            href={`/tenants/${t.id}/edit`}
+                            className="hover:underline"
+                          >
+                            {t.firstName} {t.lastName}
+                          </Link>
+                        ) : (
+                          <>
+                            {t.firstName} {t.lastName}
+                          </>
+                        )}
                         {t.accountId && (
                           <Badge variant="outline">Portal</Badge>
                         )}
@@ -138,17 +164,9 @@ export default async function TenantsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {/* Every portfolio member manages the roster, so the
-                          row is always actionable — the "co-owner's tenant"
-                          read-only case no longer exists. */}
+                      {/* Delete stays a button in its own right: it is the one
+                          action here that isn't "go look at this tenant". */}
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          render={<Link href={`/tenants/${t.id}/edit`} />}
-                        >
-                          Edit
-                        </Button>
                         <DeleteTenantButton
                           tenantId={t.id}
                           tenantName={`${t.firstName} ${t.lastName}`}
