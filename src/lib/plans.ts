@@ -11,7 +11,7 @@ export const PLAN_UNIT_LIMITS: Record<PlanTier, number | null> = {
   free: 2,
   starter: 10,
   pro: 20,
-  business: 100,
+  business: null,
 };
 
 export const PLAN_LABELS: Record<PlanTier, string> = {

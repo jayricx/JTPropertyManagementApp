@@ -17,7 +17,7 @@ const SECTIONS: { heading: string; items: QA[] }[] = [
       {
         question: "How much does Renta-PH cost?",
         answer:
-          "Free covers up to 2 units. Starter is ₱199 a month for up to 10 units, Pro is ₱399 for up to 20, and Business is ₱1,299 for up to 100. Paid plans bill annually at ten months' price — two months free. No plan is unlimited.",
+          "Free covers up to 2 units. Starter is ₱199 a month for up to 10 units, Pro is ₱399 for up to 20, and Business is ₱1,299 unlimited units. Paid plans bill annually at ten months' price — two months free.",
       },
       {
         question: "Can I pay now?",
