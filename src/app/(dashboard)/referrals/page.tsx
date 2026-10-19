@@ -8,6 +8,12 @@ import {
   referralSignupUrl,
   referralsFor,
 } from "@/lib/referrals";
+import {
+  payoutsFor,
+  programSettings,
+  totalsFor,
+} from "@/lib/referral-payouts";
+import { ReferralEarnings } from "@/components/referrals/referral-earnings";
 import { ReferralLinkCard } from "@/components/referrals/referral-link-card";
 import { ReferralList } from "@/components/referrals/referral-list";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,7 +54,11 @@ export default async function ReferralsPage() {
     );
   }
 
-  const signups = await referralsFor(affiliate.id);
+  const [signups, payouts, program] = await Promise.all([
+    referralsFor(affiliate.id),
+    payoutsFor(affiliate.id),
+    programSettings(),
+  ]);
   const signupUrl = referralSignupUrl(appUrl(), affiliate.code);
 
   return (
@@ -97,6 +107,14 @@ export default async function ReferralsPage() {
           time too.
         </p>
       )}
+
+      <ReferralEarnings
+        rows={payouts}
+        totals={totalsFor(payouts)}
+        enabled={program.enabled}
+        bountyAmount={program.bountyAmount}
+        payoutDelayDays={program.payoutDelayDays}
+      />
     </div>
   );
 }

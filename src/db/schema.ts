@@ -844,6 +844,87 @@ export const affiliates = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Referral payouts — a fixed bounty for bringing in a landlord who actually
+// collects rent, not merely signs up.
+//
+// Three decisions that matter, and all three are enforced here rather than in
+// application code:
+//
+//  - **Once per account, ever.** UNIQUE on `referred_user_id`, so a referred
+//    landlord paying rent for a decade still owes one bounty. Application-level
+//    checks get bypassed by the second code path; a constraint doesn't.
+//  - **Delayed, not immediate.** `payableAt` is a stored deadline rather than a
+//    cron flip, so "what do I owe today" is answerable by comparison instead of
+//    by whether a job happened to run. Rent gets refunded and subscriptions get
+//    cancelled; thirty observed days of paying is what separates a customer
+//    from a signup.
+//  - **A fixed peso amount, not a percentage.** Percentages tie a liability to
+//    pricing forever — at ₱399/mo, 20% of what a landlord *collects* costs six
+//    times more than the subscription is worth.
+// ---------------------------------------------------------------------------
+
+export const referralPayoutStatusEnum = pgEnum("referral_payout_status", [
+  "pending",
+  "paid",
+  "voided",
+]);
+
+export const referralPayouts = pgTable(
+  "referral_payouts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Who gets the money. */
+    affiliateId: uuid("affiliate_id")
+      .notNull()
+      .references(() => affiliates.id, { onDelete: "cascade" }),
+    /** The landlord whose first verified payment earned it. */
+    referredUserId: uuid("referred_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    status: referralPayoutStatusEnum("status").default("pending").notNull(),
+    /** The payment that triggered it, kept for the audit trail. */
+    triggeredByPaymentId: uuid("triggered_by_payment_id").references(
+      () => payments.id,
+      { onDelete: "set null" },
+    ),
+    triggeredAt: timestamp("triggered_at", { mode: "date" }).defaultNow().notNull(),
+    /** Not owed until this moment — the delay that outlives a refund. */
+    payableAt: timestamp("payable_at", { mode: "date" }).notNull(),
+    paidAt: timestamp("paid_at", { mode: "date" }),
+    /** How it was disbursed (GCash, bank transfer). Recorded, not assumed. */
+    payoutMethod: varchar("payout_method", { length: 64 }),
+    payoutReference: varchar("payout_reference", { length: 255 }),
+    voidedReason: text("voided_reason"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    // The once-ever rule, enforced by the database.
+    unique("referral_payouts_referred_user_key").on(t.referredUserId),
+    index("referral_payouts_affiliate_id_idx").on(t.affiliateId),
+    index("referral_payouts_status_idx").on(t.status),
+  ],
+);
+
+/**
+ * Programme settings, as a single row (id is always 1).
+ *
+ * Exists so the programme can be paused without a deploy. Every referred
+ * landlord accrues a real liability the moment their first payment verifies, and
+ * at scale that number needs to be a dial rather than a code change.
+ */
+export const referralProgram = pgTable("referral_program", {
+  id: integer("id").primaryKey(),
+  enabled: boolean("enabled").default(true).notNull(),
+  bountyAmount: numeric("bounty_amount", { precision: 10, scale: 2 })
+    .default("500.00")
+    .notNull(),
+  payoutDelayDays: integer("payout_delay_days").default(30).notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
 export const maintenanceStatusEnum = pgEnum("maintenance_status", [
   "new",
   "in_progress",

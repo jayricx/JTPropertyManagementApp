@@ -3,6 +3,7 @@ import { db } from "@/db/client";
 import { documents, leases, payments, properties, tenants, units } from "@/db/schema";
 import { sanitizeFileName } from "@/lib/attachments";
 import { sendPaymentReceipt } from "@/lib/email";
+import { onPaymentVerified } from "@/lib/referral-payouts";
 import type { PaymentMethod } from "@/lib/validations";
 import { formatCurrency } from "@/lib/utils";
 
@@ -211,6 +212,9 @@ export async function recordRentPayment(
 
   if (input.status !== "pending") {
     await emailReceipt(input.leaseId, input.amount, todayPaymentDate());
+    // A landlord entering a payment directly counts as verified just as much
+    // as approving a tenant's submission, so it earns a referral bounty too.
+    if (inserted?.id) await onPaymentVerified(inserted.id);
   }
   return inserted?.id ?? null;
 }
@@ -237,6 +241,13 @@ export async function verifyPendingPayment(
   if (claimed.leaseId) {
     await emailReceipt(claimed.leaseId, Number(claimed.amount), claimed.paidDate);
   }
+
+  // A first verified payment is what earns a referral bounty. Runs after the
+  // claim, so a double-click that lost the race doesn't trigger anything, and
+  // is best-effort inside the trigger — a landlord's payment must never depend
+  // on the referral programme succeeding.
+  await onPaymentVerified(paymentId);
+
   return true;
 }
 

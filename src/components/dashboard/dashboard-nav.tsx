@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
+  Banknote,
   Building2,
   ChartColumnBig,
   FileText,
@@ -48,6 +49,7 @@ const referralItems = [
 const adminItems = [
   { href: "/admin/landlords", label: "Landlord accounts", icon: ShieldCheck },
   { href: "/admin/referrals", label: "Referral codes", icon: Gift },
+  { href: "/admin/referrals/payouts", label: "Referral payouts", icon: Banknote },
   { href: "/feedback/inbox", label: "Request inbox", icon: Inbox },
 ];
 
