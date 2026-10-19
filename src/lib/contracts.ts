@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   leaseContracts,
@@ -12,6 +12,13 @@ import {
   users,
 } from "@/db/schema";
 import type { ContractStatus } from "@/db/schema";
+import {
+  FILIPINO_MONTHS,
+  type ContractLanguage,
+  type ContractPresetId,
+} from "@/lib/contract-templates";
+
+export type { ContractLanguage, ContractPresetId };
 import type { SignatureVerification } from "@/lib/signature-verification";
 import type { SignatureVerifiedBy } from "@/lib/signatures";
 
@@ -88,6 +95,10 @@ export interface ContractTerms {
    * before the wording was versioned, which are read as the legacy version.
    */
   renderVersion: number;
+  /** Which language the template prose is rendered in. Absent → English. */
+  language?: ContractLanguage;
+  /** Which clause preset seeded this draft. Absent → residential. */
+  presetId?: ContractPresetId;
 }
 
 export const EMPTY_CONTRACT_TERMS: ContractTerms = {
@@ -129,9 +140,21 @@ export function contractPartyWords(terms: ContractTerms): ContractPartyWords {
     : { lessor: "Landlord", lessee: "Tenant" };
 }
 
+/** The snapshot's language, defaulting to English for older snapshots. */
+export function contractLanguage(terms: ContractTerms): ContractLanguage {
+  return terms.language ?? "en";
+}
+
 export interface ContractSection {
   heading: string;
   paragraphs: string[];
+  /**
+   * The landlord's own wording for this clause, if any — kept apart from the
+   * template prose because it cannot be translated. In a bilingual contract it
+   * is therefore emitted **once**, after both languages, rather than pasted
+   * into each. Duplicating it reads as a drafting error.
+   */
+  note?: string;
 }
 
 const MONTHS = [
@@ -167,11 +190,12 @@ function line(address: string, city: string): string {
 }
 
 /**
- * The contract as a list of numbered clauses. Optional clauses are omitted
- * entirely when the landlord left them blank — no empty headings, no
- * "not specified" filler.
+ * The English clauses.
+ *
+ * Optional clauses are omitted entirely when the landlord left them blank — no
+ * empty headings, no "not specified" filler.
  */
-export function renderContractSections(terms: ContractTerms): ContractSection[] {
+function englishSections(terms: ContractTerms): ContractSection[] {
   const words = contractPartyWords(terms);
   // A lease counterparty has to be identifiable, not just reachable — so a
   // trading name replaces the personal one when there is one, and the person
@@ -213,13 +237,10 @@ export function renderContractSections(terms: ContractTerms): ContractSection[] 
     },
     {
       heading: "Security deposit",
-      paragraphs: terms.depositTerms
-        ? [
-            `The ${words.lessee} shall pay a security deposit of ${formatPeso(terms.depositAmount)}. ${terms.depositTerms}`,
-          ]
-        : [
-            `The ${words.lessee} shall pay a security deposit of ${formatPeso(terms.depositAmount)}.`,
-          ],
+      paragraphs: [
+        `The ${words.lessee} shall pay a security deposit of ${formatPeso(terms.depositAmount)}.`,
+      ],
+      note: terms.depositTerms.trim() || undefined,
     },
   ];
 
@@ -233,16 +254,144 @@ export function renderContractSections(terms: ContractTerms): ContractSection[] 
     ["Additional terms", terms.additionalTerms],
   ];
   for (const [heading, body] of optional) {
-    if (body.trim()) sections.push({ heading, paragraphs: [body.trim()] });
+    if (body.trim()) {
+      sections.push({ heading, paragraphs: [], note: body.trim() });
+    }
+  }
+
+  return sections;
+}
+
+/** "1 Marso 2026" — hand-rolled, for the same reason as the English date. */
+export function formatFilipinoDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso || "—";
+  const [, year, month, day] = match;
+  const name = FILIPINO_MONTHS[Number(month) - 1];
+  if (!name) return iso;
+  return `${Number(day)} ${name} ${year}`;
+}
+
+/**
+ * The Filipino clauses. Deliberately mirrors `englishSections` clause for
+ * clause so a bilingual contract reads as one agreement in two languages rather
+ * than two documents stapled together.
+ *
+ * "Lessor" and "Lessee" are kept untranslated: that is what a Filipino tenancy
+ * agreement actually uses, and translating them would make the document look
+ * foreign to the people most likely to be signing it.
+ */
+function filipinoSections(terms: ContractTerms): ContractSection[] {
+  const { lessor, lessee } = contractPartyWords(terms);
+  const trading = terms.landlordBusinessName.trim();
+  const personal = terms.landlordName.trim();
+  const landlord =
+    trading && trading.toLowerCase() !== personal.toLowerCase()
+      ? `${trading}, sa pamamagitan ni ${personal}`
+      : trading || personal || `ang ${lessor}`;
+
+  const sections: ContractSection[] = [
+    {
+      heading: "Ang mga parties",
+      paragraphs: [
+        `Naghahawak ang kasunduang ito ng ${landlord} (ang "${lessor}"), na may email na ${terms.landlordEmail || "wala sa tala"}, at ${terms.tenantName || `ang ${lessee}`} (ang "${lessee}"), na may email na ${terms.tenantEmail || "wala sa tala"}.`,
+      ],
+    },
+    {
+      heading: "Ang paksa",
+      paragraphs: [
+        `Ini-renta ng ${lessor} sa ${lessee} ang yunit na kilala bilang ${terms.unitName || "—"} sa ${terms.propertyName || "—"}, ${line(terms.propertyAddress, terms.propertyCity)}.`,
+      ],
+    },
+    {
+      heading: "Ang panahon",
+      paragraphs: [
+        terms.endDate
+          ? `Nagsisimula ang pagliliwat noong ${formatFilipinoDate(terms.startDate)} at natatapos noong ${formatFilipinoDate(terms.endDate)}.`
+          : `Nagsisimula ang pagliliwat noong ${formatFilipinoDate(terms.startDate)} at magpapatuloy hanggang magbigay man ang kahit na isa sa dalawang parties ng abiso ayon sa kasunduan.`,
+      ],
+    },
+    {
+      heading: "Ang upat",
+      paragraphs: [
+        `Bayaran ng ${lessee} sa ${lessor} ang buwaning upat na ${formatPeso(terms.rentAmount)}, sa petsa na hinihingi ng ${lessor} tuwing buwan gamit ang GCash o bank transfer.`,
+        `Itatala ng ${lessor} ang bawat bayad sa Renta-PH, at ang resibo ng ${lessee} ay ang kasaysayan ng bayad na nakikita sa portal nila.`,
+      ],
+    },
+    {
+      heading: "Ang security deposit",
+      paragraphs: [
+        `Magbabayad ang ${lessee} ng security deposit na ${formatPeso(terms.depositAmount)}.`,
+      ],
+      note: terms.depositTerms.trim() || undefined,
+    },
+  ];
+
+  const optional: Array<[string, string]> = [
+    ["Mga utility at iba pang bayarin", terms.utilitiesNote],
+    ["Huling pagbabayad", terms.lateFeeNote],
+    ["Pagkukumpuni at pagpapanatili", terms.repairsNote],
+    ["Pagtatapos ng kasunduan at paglikas", terms.terminationNote],
+    ["Mga patakaran ng bahay", terms.houseRules],
+    ["Karagdagang kasunduan", terms.additionalTerms],
+  ];
+  for (const [heading, body] of optional) {
+    if (body.trim()) {
+      sections.push({ heading, paragraphs: [], note: body.trim() });
+    }
   }
 
   return sections;
 }
 
 /**
+ * The contract as a list of numbered clauses, in the snapshot's language.
+ *
+ * For `both`, each clause carries its two headings and its two sets of
+ * template paragraphs in one numbered block — adjacent, so the two languages
+ * can never be mistaken for separate terms. The landlord's own wording is
+ * emitted once at the end of the clause, because there is no honest way to
+ * translate it and duplicating it would read as a drafting mistake.
+ */
+export function renderContractSections(terms: ContractTerms): ContractSection[] {
+  const language = contractLanguage(terms);
+  const flatten = (sections: ContractSection[]): ContractSection[] =>
+    sections.map((section) => ({
+      heading: section.heading,
+      paragraphs: section.note
+        ? [...section.paragraphs, section.note]
+        : section.paragraphs,
+      note: undefined,
+    }));
+
+  if (language === "en") return flatten(englishSections(terms));
+  if (language === "fil") return flatten(filipinoSections(terms));
+
+  const en = englishSections(terms);
+  const fil = filipinoSections(terms);
+
+  // Join on the English list, since it's the one that defines which optional
+  // clauses exist: a clause the landlord left blank is blank in both.
+  return en.map((section, index) => {
+    const match = fil[index];
+    const headings = [section.heading];
+    const paragraphs = [...section.paragraphs];
+    if (match) {
+      if (match.heading !== section.heading) headings.push(match.heading);
+      paragraphs.push(...match.paragraphs);
+    }
+    // Once, at the end: the landlord's words are in whatever language they
+    // wrote them in.
+    if (section.note) paragraphs.push(section.note);
+    return { heading: headings.join(" / "), paragraphs };
+  });
+}
+
+/**
  * The plain-text contract. This exact string is what gets hashed, so it must
  * contain every clause and nothing that varies per viewer — no timestamps, no
- * version-specific wording.
+ * version-specific wording, and no signature marks (those vary per party and
+ * are deliberately not part of what the hash covers).
  */
 export function renderContractText(terms: ContractTerms): string {
   const lines: string[] = ["LEASE AGREEMENT", ""];
@@ -510,6 +659,54 @@ export async function resolveAccessToken(token: string): Promise<TokenResult | n
 }
 
 /**
+ * Send the "you still haven't opened this" nudge, with a freshly issued link.
+ *
+ * Separate from `deliverContract` because the wording, the subject and the
+ * rotation policy all differ: this is a chase rather than an issue, and it
+ * rotates the token only on the strength of the caller having filtered to
+ * contracts still sitting at `sent`.
+ */
+export async function deliverContractReminder(row: {
+  id: string;
+  version: number;
+  tenantName: string;
+  tenantEmail: string;
+  landlordLabel: string;
+  propertyLine: string;
+  attempt: 1 | 2;
+}): Promise<DeliveryOutcome> {
+  const { sendContractReminderEmail, appOrigin } = await import("@/lib/email");
+
+  const { token, expiresAt } = await issueAccessToken(row.id);
+  const result = await sendContractReminderEmail({
+    to: row.tenantEmail,
+    tenantName: row.tenantName || "there",
+    landlordLabel: row.landlordLabel,
+    propertyLine: row.propertyLine,
+    contractUrl: `${appOrigin()}/contract/${token}`,
+    attempt: row.attempt,
+  });
+
+  if (!result.delivered) {
+    return {
+      ok: false,
+      problem: result.reason ?? "The email provider didn't accept the message.",
+      loggedOnly: true,
+    };
+  }
+
+  // A reminder is a send, so it counts as one and refreshes the on-screen
+  // "last sent" line rather than contradicting it.
+  await recordSend(row.id, { error: null });
+  return {
+    ok: true,
+    problem: null,
+    loggedOnly: false,
+    linkExpiresAt: expiresAt,
+  };
+}
+
+/**
  * Record the outcome of a send attempt.
  *
  * `lastSendError` exists because "we emailed it" and "it arrived" are
@@ -555,6 +752,8 @@ export interface DeliveryOutcome {
   problem: string | null;
   /** True when no transport is configured and the mail was only logged. */
   loggedOnly: boolean;
+  /** When the signing link minted for this send expires. */
+  linkExpiresAt?: Date;
 }
 
 /**
@@ -617,6 +816,107 @@ export async function deliverContract(contractId: string): Promise<DeliveryOutco
 
   await recordSend(contractId, { error: null });
   return { ok: true, problem: null, loggedOnly: false };
+}
+
+// ---------------------------------------------------------------------------
+// Chasing a contract nobody opened
+// ---------------------------------------------------------------------------
+
+/** Days after issue at which the first and final chases go out. */
+export const CONTRACT_REMINDER_DAYS = [3, 7] as const;
+
+export interface ReminderCandidate {
+  id: string;
+  version: number;
+  issuedAt: Date | null;
+  /** 1 for the first chase, 2 for the last. */
+  attempt: 1 | 2;
+  tenantName: string;
+  tenantEmail: string;
+  landlordLabel: string;
+  propertyLine: string;
+}
+
+/**
+ * Contracts issued long enough ago that still sit at `sent` and haven't been
+ * opened — plus the contracts old enough for the second chase.
+ *
+ * The `status = 'sent'` filter is doing real work rather than being a
+ * shortcut: it means the tenant has provably not looked, so reissuing the
+ * signing link costs nothing (their old link was never going to be used), and
+ * it means a landlord is never chased about a tenant who already signed.
+ */
+export async function remindersDue(now = new Date()): Promise<ReminderCandidate[]> {
+  const out: ReminderCandidate[] = [];
+
+  for (const attempt of [1, 2] as const) {
+    const cutoff = new Date(
+      now.getTime() - CONTRACT_REMINDER_DAYS[attempt - 1] * 24 * 60 * 60 * 1000,
+    );
+    const stamp =
+      attempt === 1
+        ? leaseContracts.firstReminderSentAt
+        : leaseContracts.secondReminderSentAt;
+
+    const rows = await db
+      .select({
+        id: leaseContracts.id,
+        version: leaseContracts.version,
+        issuedAt: leaseContracts.issuedAt,
+        terms: leaseContracts.terms,
+      })
+      .from(leaseContracts)
+      .where(
+        and(
+          eq(leaseContracts.status, "sent"),
+          isNotNull(leaseContracts.issuedAt),
+          // Only contracts old enough for *this* chase. The 7-day cut-off is
+          // deliberately not checked against the 3-day stamp: a contract that
+          // was issued 10 days ago has passed both, and needs both chases.
+          lte(leaseContracts.issuedAt, cutoff),
+          isNull(stamp),
+        ),
+      );
+
+    for (const row of rows) {
+      const terms = parseContractTerms(row.terms);
+      if (!terms.tenantEmail.trim()) continue;
+      out.push({
+        id: row.id,
+        version: row.version,
+        issuedAt: row.issuedAt,
+        attempt,
+        tenantName: terms.tenantName,
+        tenantEmail: terms.tenantEmail,
+        landlordLabel:
+          terms.landlordBusinessName.trim() || terms.landlordName.trim() || "Your landlord",
+        propertyLine: [terms.propertyName, terms.unitName ? `Unit ${terms.unitName}` : ""]
+          .filter(Boolean)
+          .join(", "),
+      });
+    }
+  }
+
+  return out;
+}
+
+/** Stamp one chase as sent, so it never goes out twice. */
+export async function markReminderSent(
+  contractId: string,
+  attempt: 1 | 2,
+): Promise<void> {
+  const now = new Date();
+  if (attempt === 1) {
+    await db
+      .update(leaseContracts)
+      .set({ firstReminderSentAt: now })
+      .where(eq(leaseContracts.id, contractId));
+  } else {
+    await db
+      .update(leaseContracts)
+      .set({ secondReminderSentAt: now })
+      .where(eq(leaseContracts.id, contractId));
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,28 @@ import {
   voidContractAction,
 } from "@/app/(dashboard)/leases/actions";
 import type { ContractTerms } from "@/lib/contracts";
+import {
+  CONTRACT_PRESETS,
+  contractLanguages,
+  contractLanguageDescriptions,
+  contractLanguageLabels,
+  contractPreset,
+  presetDefaults,
+  type ContractLanguage,
+  type ContractPresetId,
+} from "@/lib/contract-templates";
+import { cn } from "@/lib/utils";
+
+/** The clause boxes a preset can seed, in the order they appear. */
+const CLAUSE_FIELDS = [
+  "utilitiesNote",
+  "depositTerms",
+  "lateFeeNote",
+  "repairsNote",
+  "terminationNote",
+  "houseRules",
+  "additionalTerms",
+] as const;
 
 /**
  * The three decisions that move a contract forward: start one, send it, or
@@ -300,6 +322,31 @@ export function ContractEditor({
   );
   const [count, setCount] = useState<number | null>(null);
 
+  // Preset and language are chosen *before* the clauses are written, because
+  // both change the text the tenant signs. Held as state so switching one
+  // re-seeds the fields without a round trip, and written into the same form
+  // so they land in the frozen snapshot together.
+  const [preset, setPreset] = useState<ContractPresetId>(
+    values.presetId ?? "residential",
+  );
+  const [language, setLanguage] = useState<ContractLanguage>(
+    values.language ?? "en",
+  );
+
+  function applyPreset(next: ContractPresetId) {
+    setPreset(next);
+    // Seeding overwrites the clause boxes, so it only happens while those boxes
+    // are still untouched — otherwise a landlord who has been typing would lose
+    // their work to a mis-click, which is not a trade anyone wants.
+    const untouched = CLAUSE_FIELDS.every((f) => !(values[f] ?? "").trim());
+    if (!untouched) return;
+    const defaults = presetDefaults(contractPreset(next), language);
+    for (const [field, text] of Object.entries(defaults)) {
+      const el = document.getElementById(`clause-${field}`);
+      if (el instanceof HTMLTextAreaElement) el.value = text;
+    }
+  }
+
   const fields: Array<{
     name: keyof ContractTerms;
     label: string;
@@ -353,10 +400,70 @@ export function ContractEditor({
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="contractId" value={contractId} />
+      <input type="hidden" name="presetId" value={preset} />
+      <input type="hidden" name="language" value={language} />
 
+      {/* ---------------------------------------------------------------- */}
+      {/* What kind of lease, and in what language                         */}
+      {/* ---------------------------------------------------------------- */}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">What are you renting out?</legend>
+        <p className="text-xs text-muted-foreground">
+          This only fills in the clauses below with sensible starting text —
+          every word stays yours to rewrite.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {CONTRACT_PRESETS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => applyPreset(option.id)}
+              aria-pressed={preset === option.id}
+              className={cn(
+                "rounded-lg border p-3 text-left text-sm transition-colors",
+                preset === option.id
+                  ? "border-primary bg-primary/5"
+                  : "hover:bg-muted/50",
+              )}
+            >
+              <span className="block font-medium">{option.label}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {option.blurb}
+              </span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Language</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {contractLanguages.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setLanguage(option)}
+              aria-pressed={language === option}
+              className={cn(
+                "rounded-lg border p-3 text-left text-sm transition-colors",
+                language === option ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+              )}
+            >
+              <span className="block font-medium">
+                {contractLanguageLabels[option]}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {contractLanguageDescriptions[option]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="space-y-5 border-t pt-5">
       {fields.map((field) => (
         <div key={field.name} className="space-y-1.5">
-          <label htmlFor={field.name} className="text-sm font-medium">
+          <label htmlFor={`clause-${field.name}`} className="text-sm font-medium">
             {field.label}
             <span className="ml-2 text-xs font-normal text-muted-foreground">
               optional
@@ -364,7 +471,7 @@ export function ContractEditor({
           </label>
           <p className="text-xs text-muted-foreground">{field.hint}</p>
           <textarea
-            id={field.name}
+            id={`clause-${field.name}`}
             name={field.name}
             defaultValue={values[field.name] ?? ""}
             rows={field.rows}
@@ -374,6 +481,7 @@ export function ContractEditor({
           />
         </div>
       ))}
+      </div>
 
       {state?.error && (
         <p className="text-sm font-medium text-destructive">{state.error}</p>

@@ -122,6 +122,52 @@ export function emailDiagnostics() {
   };
 }
 
+export interface ContractReminderEmail {
+  to: string;
+  tenantName: string;
+  landlordLabel: string;
+  propertyLine: string;
+  contractUrl: string;
+  /** 1 for the first chase, 2 for the last. */
+  attempt: number;
+}
+
+/**
+ * The chase for a contract nobody opened.
+ *
+ * Sent only to contracts still sitting at `sent` — never opened, so reissuing
+ * the signing link is free and any earlier email's link was worthless anyway.
+ * The tone is a nudge, not a chase: this is a tenant who never said they were
+ * coming, and the most common reason is that the first email landed in spam.
+ */
+export async function sendContractReminderEmail(
+  r: ContractReminderEmail,
+): Promise<SendResult> {
+  const tenantLabel = escapeHtml(r.tenantName);
+  const landlordLabel = escapeHtml(r.landlordLabel);
+  const propertyLabel = escapeHtml(r.propertyLine);
+  const contractUrl = escapeHtml(r.contractUrl);
+  const subject =
+    r.attempt === 1
+      ? `${landlordLabel} is still waiting on your lease for ${propertyLabel}`
+      : `Last reminder: your lease for ${propertyLabel} is unsigned`;
+
+  return sendEmail({
+    to: r.to,
+    subject,
+    text: `Hi ${r.tenantName},\n\n${r.landlordLabel} sent you your lease agreement for ${r.propertyLine} and hasn't heard back yet.\n\nIf the first email went to your spam folder, this is a fresh link — the old one no longer works. You don't need an account:\n${r.contractUrl}\n\nIf you've already signed, ignore this — nothing further is needed.\n\n— Renta-PH`,
+    html: emailShell(
+      "Your lease is still waiting",
+      `<p>Hi ${tenantLabel},</p>
+       <p>${landlordLabel} sent you the lease agreement for <strong>${propertyLabel}</strong> and hasn't heard back yet.</p>
+       <p>If the first email went to your spam folder, don't worry — the button below is a fresh link.</p>
+       <p><a href="${contractUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;">Read and sign my lease</a></p>
+       <p style="color:#6b7280;font-size:13px;">No account needed. If you've already signed, you can ignore this.</p>
+       <p style="color:#6b7280;font-size:13px;">If the button doesn't work, paste this link into your browser:<br>${contractUrl}</p>`,
+    ),
+  });
+}
+
 /**
  * The public origin, for links that have to work outside a browser session —
  * the emailed contract link is the first thing that needs one.
@@ -180,7 +226,7 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-/** Wrap body content in the JT-branded email shell. */
+/** Wrap body content in the Renta-PH branded email shell. */
 export function emailShell(title: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html>

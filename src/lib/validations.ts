@@ -276,6 +276,14 @@ export const leaseNoteSchema = z.object({
  * legislate. Blank clauses are dropped from the rendered contract entirely.
  */
 export const contractTermsSchema = z.object({
+  // Preset and language are part of the frozen snapshot: both change the text
+  // the tenant signs, so they are validated alongside the clauses rather than
+  // being trusted from a hidden field.
+  presetId: z
+    .enum(["residential", "bedspace", "commercial"])
+    .optional()
+    .catch("residential"),
+  language: z.enum(["en", "fil", "both"]).optional().catch("en"),
   utilitiesNote: optionalText(2000),
   depositTerms: optionalText(2000),
   lateFeeNote: optionalText(2000),

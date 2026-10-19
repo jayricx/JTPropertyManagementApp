@@ -38,6 +38,10 @@ import {
 } from "@/lib/contracts";
 import { signContractAsLandlordAction } from "@/app/(dashboard)/leases/actions";
 import {
+  contractLanguageLabels,
+  contractPreset,
+} from "@/lib/contract-templates";
+import {
   signatureVerificationDescriptions,
   signatureVerificationLabels,
 } from "@/lib/signatures";
@@ -240,7 +244,23 @@ export default async function LeaseContractPage({
                     )}
                   </div>
                 )}
+                {/* Two automatic chases, at 3 and 7 days. Saying so up front is
+                    better than the landlord wondering whether we're nagging. */}
+                {shown.status === "sent" && (
+                  <p className="text-xs text-muted-foreground">
+                    Not opened yet, so we&apos;ll nudge them automatically at 3
+                    and 7 days. Resending is always available above.
+                  </p>
+                )}
                 <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline" className="text-[10px]">
+                      {contractLanguageLabels[shown.terms.language ?? "en"]}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {contractPreset(shown.terms.presetId ?? "residential").label}
+                    </Badge>
+                  </div>
                   {canSign && (
                     <SignatureDialog
                       action={signContractAsLandlordAction}

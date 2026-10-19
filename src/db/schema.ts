@@ -444,6 +444,10 @@ export const leaseContracts = pgTable(
      * this: "sent" with no delivery and no error is the worst possible outcome.
      */
     lastSendError: text("last_send_error"),
+    /** First chase, for a contract the tenant never opened. At most once. */
+    firstReminderSentAt: timestamp("first_reminder_sent_at", { mode: "date" }),
+    /** Second and final chase. */
+    secondReminderSentAt: timestamp("second_reminder_sent_at", { mode: "date" }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
