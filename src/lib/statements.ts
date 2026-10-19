@@ -89,6 +89,68 @@ export interface LeaseStatement {
   currentMonth: MonthlyStatement | null;
 }
 
+// ---------------------------------------------------------------------------
+// How a tenant's balance is described in words
+// ---------------------------------------------------------------------------
+
+/**
+ * What is actually in this tenant's balance, as words.
+ *
+ * Most house rentals in the Philippines are *not* sub-metered — the tenant has
+ * their own Meralco or Maynilad account and pays it directly, so power they use
+ * never touches the landlord at all. Telling those tenants their balance
+ * "includes the electricity and water you've used" is simply false, and it
+ * reads as though the landlord is billing them for utilities they already paid
+ * someone else.
+ *
+ * So this is derived from the statement rather than asserted. A lease with no
+ * meter readings and no utility charges says nothing about electricity, and the
+ * copy says nothing about electricity either. Where they *are* sub-metered, the
+ * meter language is correct and stays.
+ *
+ * Over the whole statement rather than the current month: this describes the
+ * lease's arrangement, not one period's bill.
+ */
+export function balanceComposition(statement: LeaseStatement): {
+  electricity: boolean;
+  water: boolean;
+  charges: boolean;
+  /** Short, for "(rent, electricity and water)". */
+  label: string;
+  /** A full sentence fragment for body copy. */
+  sentence: string;
+} {
+  const electricity = statement.months.some((m) => Number(m.electricity) > 0);
+  const water = statement.months.some((m) => Number(m.water) > 0);
+  const charges = statement.months.some((m) => Number(m.otherCharges) > 0);
+
+  const utilities = [
+    electricity ? "electricity" : null,
+    water ? "water" : null,
+  ].filter(Boolean);
+  const utilityPhrase =
+    utilities.length === 2
+      ? "electricity and water"
+      : (utilities[0] ?? "");
+
+  const pieces = ["rent"];
+  if (utilityPhrase) pieces.push(utilityPhrase);
+  if (charges) pieces.push("other charges");
+
+  const label =
+    pieces.length === 1 ? "rent" : `rent, ${pieces.slice(1).join(" and ")}`;
+
+  const sentence = utilityPhrase
+    ? `Your balance is rent plus the ${utilityPhrase} your landlord has read from your meter${
+        charges ? ", and any other charges added" : ""
+      }.`
+    : charges
+      ? "Your balance is rent plus any other charges your landlord has added."
+      : "Your balance is rent.";
+
+  return { electricity, water, charges, label, sentence };
+}
+
 export interface LeaseStatementOptions {
   /** Cap the number of months shown, keeping the most recent. Defaults to 12. */
   maxMonths?: number;

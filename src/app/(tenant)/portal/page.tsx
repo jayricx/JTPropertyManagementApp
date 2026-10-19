@@ -40,7 +40,7 @@ import {
 import { LeaseSignaturesCard } from "@/components/leases/lease-signatures-card";
 import { StatementTable } from "@/components/leases/statement-table";
 import { signLeaseAsTenantAction } from "@/app/(tenant)/portal/actions";
-import { getLeaseStatement } from "@/lib/statements";
+import { balanceComposition, getLeaseStatement } from "@/lib/statements";
 import { getLeaseSignatures } from "@/lib/signatures";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -467,15 +467,20 @@ export default async function TenantPortalPage({
                 </Button>
               ) : (
                 <p>
-                  Nothing is due right now — new rent and utility charges will
-                  appear here.
+                  Nothing is due right now — rent and any charges your landlord
+                  adds will appear here.
                 </p>
               )}
+              {/*
+                Describes what is actually in the balance rather than assuming a
+                billing model. Most tenants here pay Meralco and Maynilad
+                directly, so claiming their balance includes electricity they
+                never bought from the landlord is simply wrong.
+              */}
               <p>
-                Rent plus any electricity and water you&apos;ve used make up
-                your balance; pay it by GCash or bank transfer, then submit
-                the reference number. Your landlord verifies each submission
-                against their wallet or bank statement before it counts.
+                {statement
+                  ? `${balanceComposition(statement).sentence} Pay it by GCash or bank transfer, then submit the reference number. Your landlord verifies each submission against their wallet or bank statement before it counts.`
+                  : "Pay by GCash or bank transfer, then submit the reference number. Your landlord verifies each submission before it counts."}
               </p>
               {pendingTotal > 0 && (
                 <p className="font-medium text-amber-700 dark:text-amber-400">

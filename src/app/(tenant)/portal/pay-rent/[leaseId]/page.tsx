@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { loadPayableLease } from "@/lib/portal-lease";
+import { balanceComposition } from "@/lib/statements";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 /**
@@ -56,7 +57,7 @@ export default async function PayRentPage({
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
               <dt className="text-xs text-muted-foreground">
-                Amount due (rent + utilities + charges)
+                Amount due ({balanceComposition(lease.statement).label})
               </dt>
               <dd className="text-lg font-semibold">
                 {formatCurrency(lease.amountDue)}
