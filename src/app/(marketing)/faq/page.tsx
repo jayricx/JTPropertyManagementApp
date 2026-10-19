@@ -10,6 +10,13 @@ export const metadata: Metadata = {
 
 type QA = { question: string; answer: string };
 
+/** "Tenants and the portal" → "tenants-and-the-portal". */
+const slug = (heading: string) =>
+  heading
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
 const SECTIONS: { heading: string; items: QA[] }[] = [
   {
     heading: "Plans and pricing",
@@ -112,6 +119,36 @@ const SECTIONS: { heading: string; items: QA[] }[] = [
     ],
   },
   {
+    heading: "Referrals",
+    items: [
+      {
+        question: "What is a referral code for?",
+        answer:
+          "Every account gets a share link and a code automatically. If someone signs up with it, they appear on your Referrals page with the date they joined and whether they added a unit. It's a way of telling which of your recommendations actually landed.",
+      },
+      {
+        question: "Do I get paid for referrals?",
+        answer:
+          "No — not yet, and not for the person you refer either. Referrals are attribution only. Nobody pays a commission and nobody gets a discount for signing up. We'd rather say that plainly than have you send links expecting something.",
+      },
+      {
+        question: "What can the person who referred me see?",
+        answer:
+          "Only the name, email, join date and plan of accounts that signed up with their specific link. They can't see anything else about your properties, tenants or rent, and they can't email you. We tell them this on the sign-up page when a referral is present.",
+      },
+      {
+        question: "What if I type a code that doesn't exist?",
+        answer:
+          "You can still sign up — a code is never required, and an unknown or mistyped one is simply not counted. It will never stop you creating an account.",
+      },
+      {
+        question: "Can someone use my code to inflate their own number?",
+        answer:
+          "No. Using your own code, a second account on the same email domain, or an account under a day old is all refused, and you can pause a code that looks like it's being abused.",
+      },
+    ],
+  },
+  {
     heading: "Data and security",
     items: [
       {
@@ -164,7 +201,9 @@ export default function FaqPage() {
 
       <div className="mt-10 space-y-10">
         {SECTIONS.map((section) => (
-          <section key={section.heading}>
+          /* Anchor on the heading so a section can be linked directly —
+             /faq#referrals is what the landing page points at. */
+          <section key={section.heading} id={slug(section.heading)}>
             <h2 className="text-xl font-bold tracking-tight">
               {section.heading}
             </h2>

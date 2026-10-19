@@ -5,6 +5,7 @@ import {
   Building2,
   Calculator,
   FileSignature,
+  Gift,
   Landmark,
   Receipt,
   Users,
@@ -80,6 +81,12 @@ const FEATURES = [
     title: "Custom fields",
     description:
       "Gate codes, parking slots, water tank levels — add the fields your buildings actually need, shared across your portfolio.",
+  },
+  {
+    icon: Gift,
+    title: "Know a landlord who needs this?",
+    description:
+      "Every account gets a share link and a code. Send it to a landlord you'd rather see set up properly, and you'll see who signed up with it — no cost, no catch.",
   },
 ];
 
@@ -233,6 +240,41 @@ export default function LandingPage() {
             render={<Link href="/guides/split-utility-bill" />}
           >
             Read the guide
+          </Button>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Referrals                                                        */}
+      {/* ---------------------------------------------------------------- */}
+      {/* Kept honest on purpose: this records who sent whom. Nothing is
+          earned and nothing is discounted, and saying otherwise here would be
+          a claim the product doesn't honour. */}
+      <section className="px-6 py-16">
+        <div className="mx-auto flex max-w-5xl flex-col items-center gap-8 text-center md:flex-row md:text-left">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-primary">Referrals</p>
+            <h2 className="mt-1 text-2xl font-bold tracking-tight">
+              Send it to one landlord you know
+            </h2>
+            <p className="mt-2 text-muted-foreground">
+              Your account comes with a link and a code from the moment you
+              sign up. Paste it into a landlord group, or send it to the cousin
+              who keeps a spreadsheet of four units and calls it bookkeeping.
+              You&apos;ll see who signed up with it.
+            </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              We don&apos;t pay commission and nobody gets a discount for
+              signing up. It&apos;s a way of knowing which of your referrals
+              actually landed, nothing more.
+            </p>
+          </div>
+          <Button
+            size="lg"
+            variant="outline"
+            render={<Link href="/faq#referrals" />}
+          >
+            How referrals work
           </Button>
         </div>
       </section>

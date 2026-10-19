@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Calculator, Landmark } from "lucide-react";
+import { Calculator, Gift, Landmark } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Guides — Renta-PH.net",
   description:
-    "Practical guides for Philippine landlords: splitting utility bills, collecting rent by GCash, and running a small rental portfolio.",
+    "Practical guides for Philippine landlords: splitting utility bills, collecting rent by GCash, running a small rental portfolio, and referring other landlords.",
 };
 
 const GUIDES = [
@@ -24,6 +24,14 @@ const GUIDES = [
     description:
       "What the reference number does and doesn't identify, why you don't need a merchant account, and how to keep submitted payments from counting as income before you verify them.",
     minutes: 5,
+  },
+  {
+    href: "/guides/refer-a-landlord",
+    icon: Gift,
+    title: "Referring another landlord without sounding like a salesman",
+    description:
+      "Who actually benefits from property software, what to say in a landlord group, and why your referral code pays you nothing — and why that's still worth sending.",
+    minutes: 4,
   },
 ];
 
