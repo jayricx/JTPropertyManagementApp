@@ -140,13 +140,17 @@ export function balanceComposition(statement: LeaseStatement): {
   const label =
     pieces.length === 1 ? "rent" : `rent, ${pieces.slice(1).join(" and ")}`;
 
+  // "Your balance is rent" reads wrong: it equates a number to a category.
+  // The possessive puts it back — the balance *is* the tenant's rent, not rent
+  // in general. The rent-only case also says what is absent, because "is there
+  // something I forgot about utilities?" is the question a tenant lands on here.
   const sentence = utilityPhrase
-    ? `Your balance is rent plus the ${utilityPhrase} your landlord has read from your meter${
+    ? `Your balance is your rent plus the ${utilityPhrase} your landlord has read from your meter${
         charges ? ", and any other charges added" : ""
       }.`
     : charges
-      ? "Your balance is rent plus any other charges your landlord has added."
-      : "Your balance is rent.";
+      ? "Your balance is your rent plus any other charges your landlord has added."
+      : "Your balance is your rent. No utilities or other charges have been added.";
 
   return { electricity, water, charges, label, sentence };
 }
