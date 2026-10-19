@@ -9,6 +9,7 @@ import {
   Building2,
   ChartColumnBig,
   FileText,
+  Gift,
   Home,
   Inbox,
   LayoutDashboard,
@@ -38,9 +39,15 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+/** Only rendered for landlords, who can share their own link. */
+const referralItems = [
+  { href: "/referrals", label: "Referrals", icon: Gift },
+];
+
 /** Only rendered for `isAdmin` accounts. */
 const adminItems = [
   { href: "/admin/landlords", label: "Landlord accounts", icon: ShieldCheck },
+  { href: "/admin/referrals", label: "Referral codes", icon: Gift },
   { href: "/feedback/inbox", label: "Request inbox", icon: Inbox },
 ];
 
@@ -48,18 +55,22 @@ function NavLinks({
   pathname,
   hasPortal = false,
   isAdmin = false,
+  canRefer = false,
   onNavigate,
 }: {
   pathname: string;
   hasPortal?: boolean;
   isAdmin?: boolean;
+  canRefer?: boolean;
   onNavigate?: () => void;
 }) {
   const isItemActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  // Operator tools append in their own group; landlords never see them.
-  const items = isAdmin ? [...navItems, ...adminItems] : navItems;
+  // Referrals sit with the landlord's own sections; operator tools append in
+  // their own group below, which landlords never see.
+  const base = canRefer ? [...navItems, ...referralItems] : navItems;
+  const items = isAdmin ? [...base, ...adminItems] : base;
 
   return (
     <>
@@ -159,11 +170,14 @@ function NavBrand({
 export function DashboardNav({
   hasPortal = false,
   isAdmin = false,
+  canRefer = false,
   children,
 }: {
   hasPortal?: boolean;
   /** Operator accounts get the landlord-accounts view in the sidebar. */
   isAdmin?: boolean;
+  /** Landlords get a share link; tenants never see the entry at all. */
+  canRefer?: boolean;
   /** Rendered under the brand in the sidebar (the portfolio switcher). */
   children?: React.ReactNode;
 }) {
@@ -193,6 +207,7 @@ export function DashboardNav({
             pathname={pathname}
             hasPortal={hasPortal}
             isAdmin={isAdmin}
+            canRefer={canRefer}
           />
         </nav>
         <SidebarFooter />
@@ -249,6 +264,7 @@ export function DashboardNav({
                 pathname={pathname}
                 hasPortal={hasPortal}
                 isAdmin={isAdmin}
+                canRefer={canRefer}
                 onNavigate={() => setMobileOpen(false)}
               />
             </nav>

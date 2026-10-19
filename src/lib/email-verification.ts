@@ -54,6 +54,8 @@ export interface StartRegistrationInput {
   email: string;
   name: string | null;
   passwordHash: string;
+  /** Referral offered at signup, carried to `verifyRegistrationCode`. */
+  referralCode?: string | null;
 }
 
 export type StartResult =
@@ -96,6 +98,9 @@ export async function beginRegistration(
     attempts: 0,
     lastSentAt: now,
     expiresAt: new Date(now.getTime() + CODE_TTL_MINUTES * 60_000),
+    // Carried, not applied: the affiliate is resolved at verification time so a
+    // code that was paused or never existed costs the signup nothing.
+    referralCode: input.referralCode ?? null,
   };
 
   await db
@@ -152,7 +157,16 @@ export async function resendRegistrationCode(
 }
 
 export type VerifyResult =
-  | { ok: true; registration: { email: string; name: string | null; passwordHash: string } }
+  | {
+      ok: true;
+      registration: {
+        email: string;
+        name: string | null;
+        passwordHash: string;
+        /** Whatever referral was carried on the claimed row, if any. */
+        referralCode: string | null;
+      };
+    }
   | { ok: false; reason: "not_found" | "expired" | "locked" | "mismatch" };
 
 /**
@@ -173,6 +187,7 @@ export async function verifyRegistrationCode(
       codeHash: pendingRegistrations.codeHash,
       attempts: pendingRegistrations.attempts,
       expiresAt: pendingRegistrations.expiresAt,
+      referralCode: pendingRegistrations.referralCode,
     })
     .from(pendingRegistrations)
     .where(eq(pendingRegistrations.email, normalized))
@@ -214,6 +229,9 @@ export async function verifyRegistrationCode(
       email: pendingRegistrations.email,
       name: pendingRegistrations.name,
       passwordHash: pendingRegistrations.passwordHash,
+      // Handed back so the caller can attribute the new account. It came off
+      // the row that was just claimed, not from the request.
+      referralCode: pendingRegistrations.referralCode,
     });
 
   if (!claimed?.passwordHash) return { ok: false, reason: "mismatch" };

@@ -10,11 +10,19 @@ import {
   CODE_TTL_MINUTES,
   purgeExpiredPendingRegistrations,
 } from "@/lib/email-verification";
+import { looksLikeCode, normalizeCode } from "@/lib/referrals";
 
 const registerSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email(),
   password: z.string().min(8).max(100),
+  /**
+   * Optional. Normally comes from the `rb_ref` cookie that middleware set off
+   * `?ref=`, but the form also posts it directly for someone who typed a code
+   * by hand. Unvalidated here beyond shape — an unknown code is a missing
+   * attribution, never a failed signup.
+   */
+  referralCode: z.string().trim().max(32).optional(),
 });
 
 /**
@@ -64,10 +72,19 @@ export async function POST(request: Request) {
     // Cheap cleanup of signups abandoned long ago.
     await purgeExpiredPendingRegistrations().catch(() => {});
 
+    // The referral rides along on the pending row, not in the browser: that
+    // row is the only thing that survives between this step and the emailed
+    // verification, so it's the only place a code can be trusted to still mean
+    // what it did when the form was submitted.
+    const referralCode = normalizeCode(
+      parsed.data.referralCode || request.headers.get("x-referral-code"),
+    );
+
     const started = await beginRegistration({
       email: normalizedEmail,
       name,
       passwordHash: await bcrypt.hash(password, 10),
+      referralCode: looksLikeCode(referralCode) ? referralCode : null,
     });
 
     if (!started.ok) {

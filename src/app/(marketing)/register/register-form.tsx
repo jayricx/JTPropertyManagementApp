@@ -39,7 +39,14 @@ const RESEND_COOLDOWN_SECONDS = 60;
  * the account (and verifies the address) in one step, so it is offered beside
  * the email form rather than in place of it.
  */
-export function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
+export function RegisterForm({
+  googleEnabled,
+  referredBy,
+}: {
+  googleEnabled: boolean;
+  /** Who referred this signup, resolved server-side from the `rb_ref` cookie. */
+  referredBy?: string | null;
+}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>({ name: "details" });
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +56,32 @@ export function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
   const [resendIn, setResendIn] = useState(0);
   const [resendNote, setResendNote] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+
+  // Referrals. A link that arrives with `?ref=` has already set the cookie, so
+  // the common case needs no input at all; the box is only for someone typing a
+  // code they were given some other way.
+  const [showReferral, setShowReferral] = useState(false);
+  const [referralInput, setReferralInput] = useState("");
+  const [dismissed, setDismissed] = useState(false);
+
+  // The cookie set by middleware off `?ref=`. Read once on mount — it can't
+  // change without a navigation, and the server already knows it either way.
+  const [cookieCode] = useState(() => {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)rb_ref=([^;]+)/);
+    return match ? decodeURIComponent(match[1]).toUpperCase() : "";
+  });
+
+  const dismissReferral = () => {
+    setDismissed(true);
+    // Clearing the cookie too, so the banner doesn't come back on reload.
+    document.cookie =
+      "rb_ref=; Max-Age=0; path=/; SameSite=Lax";
+  };
+
+  const activeReferral = !dismissed
+    ? referralInput.trim() || (!showReferral ? cookieCode : "")
+    : "";
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -73,7 +106,7 @@ export function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, referralCode: activeReferral || undefined }),
       });
       const data = await response.json().catch(() => ({}));
 
@@ -313,6 +346,53 @@ export function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
                     )}
                   />
                   {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+
+                  {/* The referral is usually invisible: the link carried it, so
+                      this only appears for someone who clicked "I have a code".
+                      An always-visible box would mostly collect typos. */}
+                  {referredBy ? (
+                    <div className="space-y-1.5 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                      <p className="text-sm font-medium">
+                        You were referred by {referredBy}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        We&apos;ll let them know you signed up. To remove this,{" "}
+                        <button
+                          type="button"
+                          onClick={dismissReferral}
+                          className="underline hover:text-foreground"
+                        >
+                          sign up without a referral
+                        </button>
+                        .
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setShowReferral((v) => !v)}
+                        className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                      >
+                        {showReferral
+                          ? "Hide referral code"
+                          : "I have a referral code"}
+                      </button>
+                      {showReferral && (
+                        <Input
+                          value={referralInput}
+                          onChange={(e) => setReferralInput(e.target.value)}
+                          placeholder="e.g. K7X2QF9B"
+                          maxLength={16}
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="mt-2 font-mono uppercase"
+                          aria-label="Referral code"
+                        />
+                      )}
+                    </div>
+                  )}
+
                   <Button type="submit" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? "Sending code…" : "Create account"}
                   </Button>

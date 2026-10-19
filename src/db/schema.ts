@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   date,
   index,
@@ -52,6 +53,16 @@ export const users = pgTable("users", {
    * unlocks the feature-request inbox and the public roadmap.
    */
   isAdmin: boolean("is_admin").default(false).notNull(),
+  /**
+   * The affiliate whose link brought this account in. Set once, at creation,
+   * and never rewritten — attribution is first-touch, so the person who
+   * introduced a landlord keeps the credit even if they later click someone
+   * else's link. Null for anyone who arrived without one, which is most
+   * accounts.
+   */
+  referredBy: uuid("referred_by").references((): AnyPgColumn => affiliates.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -767,11 +778,69 @@ export const pendingRegistrations = pgTable(
     attempts: integer("attempts").default(0).notNull(),
     lastSentAt: timestamp("last_sent_at", { mode: "date" }),
     expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    /**
+     * The referral code offered at signup, resolved later in `verify-code`.
+     * Carried on the pending row because that row is the only thing that
+     * survives between the two steps — the browser isn't trusted to hand the
+     * same code back.
+     */
+    referralCode: varchar("referral_code", { length: 16 }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
     unique("pending_registrations_email_key").on(t.email),
     index("pending_registrations_expires_at_idx").on(t.expiresAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Referrals — every landlord can share a code; these rows are the registry
+// that keeps them unique, attributable and revocable.
+//
+// Deliberately a table of its own rather than a column on `users`. Once anyone
+// can mint a link, the interesting state is *moderation*: pausing one spammer's
+// code and recording why, without touching their account or losing the signups
+// already attributed to it.
+//
+// `users.referred_by` points here rather than storing the code string, so a
+// code can be rotated without rewriting anyone else's attribution. One user has
+// at most one referrer, ever — attribution is first-touch and never
+// overwritten.
+// ---------------------------------------------------------------------------
+
+export const affiliateStatusEnum = pgEnum("affiliate_status", [
+  "active",
+  "paused",
+]);
+
+export const affiliates = pgTable(
+  "affiliates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Short and unambiguous: no O/0, I/1, so it survives being read aloud. */
+    code: varchar("code", { length: 16 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    /**
+     * The account this code belongs to. Every holder is a user — codes are only
+     * ever generated inside an account, so there is no "code with no owner".
+     */
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: affiliateStatusEnum("status").default("active").notNull(),
+    /** Why a code was paused. Kept so the decision is auditable. */
+    pausedReason: text("paused_reason"),
+    notes: text("notes"),
+    // Present from the start so Phase 3 needs no migration — deliberately
+    // unused until there are paying customers to pay commission against.
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }),
+    payoutStatus: varchar("payout_status", { length: 32 }).default("none"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("affiliates_code_key").on(t.code),
+    unique("affiliates_user_id_key").on(t.userId),
+    index("affiliates_status_idx").on(t.status),
   ],
 );
 
