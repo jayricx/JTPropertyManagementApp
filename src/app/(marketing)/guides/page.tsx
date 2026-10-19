@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Calculator, Landmark } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Guides — Renta-PH",
+  title: "Guides — Renta-PH.net",
   description:
     "Practical guides for Philippine landlords: splitting utility bills, collecting rent by GCash, and running a small rental portfolio.",
 };

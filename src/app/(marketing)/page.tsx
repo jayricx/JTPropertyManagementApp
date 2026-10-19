@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Renta-PH — Property management for Philippine landlords",
+  title: "Renta-PH.net — Property management for Philippine landlords",
   description:
     "Collect rent by GCash or bank transfer, bill tenants their exact share of the electric bill, and keep your properties, tenants and leases in one place. Built in the Philippines, priced in pesos.",
 };
@@ -142,7 +142,7 @@ export default function LandingPage() {
                   explain it to a tenant who thinks it&apos;s unfair.
                 </p>
                 <p className="mt-3">
-                  Renta-PH reads each sub-meter and issues the statement
+                  Renta-PH.net reads each sub-meter and issues the statement
                   automatically.
                 </p>
               </CardContent>

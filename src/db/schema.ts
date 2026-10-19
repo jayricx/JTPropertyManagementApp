@@ -47,7 +47,7 @@ export const users = pgTable("users", {
   gcashNumber: varchar("gcash_number", { length: 20 }),
   gcashName: varchar("gcash_name", { length: 255 }),
   /**
-   * The people who run Renta-PH. Not a permission on landlord data — a
+   * The people who run Renta-PH.net. Not a permission on landlord data — a
    * landlord's own portfolio still only shows them their own records — it just
    * unlocks the feature-request inbox and the public roadmap.
    */

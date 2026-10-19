@@ -232,7 +232,7 @@ function englishSections(terms: ContractTerms): ContractSection[] {
       heading: "Rent",
       paragraphs: [
         `The ${words.lessee} shall pay the ${words.lessor} a monthly rent of ${formatPeso(terms.rentAmount)}, payable on the date the ${words.lessor} requests each month through GCash or bank transfer.`,
-        `The ${words.lessor} shall record each payment in Renta-PH, and the ${words.lessee}'s receipt is the payment history shown in their portal.`,
+        `The ${words.lessor} shall record each payment in Renta-PH.net, and the ${words.lessee}'s receipt is the payment history shown in their portal.`,
       ],
     },
     {
@@ -315,7 +315,7 @@ function filipinoSections(terms: ContractTerms): ContractSection[] {
       heading: "Ang upat",
       paragraphs: [
         `Bayaran ng ${lessee} sa ${lessor} ang buwaning upat na ${formatPeso(terms.rentAmount)}, sa petsa na hinihingi ng ${lessor} tuwing buwan gamit ang GCash o bank transfer.`,
-        `Itatala ng ${lessor} ang bawat bayad sa Renta-PH, at ang resibo ng ${lessee} ay ang kasaysayan ng bayad na nakikita sa portal nila.`,
+        `Itatala ng ${lessor} ang bawat bayad sa Renta-PH.net, at ang resibo ng ${lessee} ay ang kasaysayan ng bayad na nakikita sa portal nila.`,
       ],
     },
     {

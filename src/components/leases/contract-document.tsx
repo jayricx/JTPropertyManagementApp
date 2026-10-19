@@ -135,7 +135,7 @@ export function ContractDocument({
       <footer className="space-y-2 border-t pt-4 text-xs text-muted-foreground">
         {signedOn && (
           <p>
-            Signed electronically via Renta-PH on {formatDate(signedOn)}. Each
+            Signed electronically via Renta-PH.net on {formatDate(signedOn)}. Each
             party agreed that their electronic signature is the legal equivalent
             of a handwritten one.
           </p>

@@ -175,7 +175,7 @@ export default async function SignedLeasePage({ params }: SignedLeasePageProps) 
         </section>
 
         <p className="border-t pt-4 text-xs text-muted-foreground">
-          Signed electronically via Renta-PH on{" "}
+          Signed electronically via Renta-PH.net on{" "}
           {formatDate(signedOn)}. Each party agreed that their electronic
           signature is the legal equivalent of a handwritten one.
         </p>

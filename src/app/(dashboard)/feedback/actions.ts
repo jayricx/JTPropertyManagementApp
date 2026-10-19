@@ -57,7 +57,7 @@ async function landlord() {
 }
 
 /**
- * The people who run Renta-PH: they answer feature requests and decide what
+ * The people who run Renta-PH.net: they answer feature requests and decide what
  * goes on the public roadmap. A landlord's own portfolio is unaffected either
  * way — this flag unlocks triage, not their own records.
  */

@@ -241,7 +241,7 @@ then reconcile with the Meralco bill:
       <p className="mt-4 text-muted-foreground">
         Twelve units means twelve readings, twelve multiplications, a
         reconciliation against the utility bill, and then a message to each
-        tenant asking for money. Renta-PH does that loop for you: record each
+        tenant asking for money. Renta-PH.net does that loop for you: record each
         meter reading once, and each tenant&apos;s statement shows their share,
         their balance, and a link to pay by GCash or bank transfer.
       </p>
@@ -274,7 +274,7 @@ then reconcile with the Meralco bill:
         </Link>
         , or read the{" "}
         <Link href="/faq" className="underline underline-offset-4">
-          Renta-PH FAQ
+          Renta-PH.net FAQ
         </Link>
         .
       </p>

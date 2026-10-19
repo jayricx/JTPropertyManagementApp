@@ -51,7 +51,7 @@ export function MarketingNav() {
           className="flex items-center gap-2 font-semibold tracking-tight"
         >
           <BrandMark />
-          <span>Renta-PH</span>
+          <span>Renta-PH.net</span>
         </Link>
 
         {/* Desktop links */}

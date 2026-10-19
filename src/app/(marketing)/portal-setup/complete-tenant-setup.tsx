@@ -219,7 +219,7 @@ export function CompleteTenantSetup({
             {googleEnabled
               ? "Continue with Google, or choose a password. "
               : "Choose a password. "}
-            If your email already has a Renta-PH account, the invite is simply
+            If your email already has a Renta-PH.net account, the invite is simply
             linked to it and you keep your usual sign-in.
           </CardDescription>
         </CardHeader>
