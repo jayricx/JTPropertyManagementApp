@@ -20,6 +20,10 @@ export interface UpcomingLease {
   propertyName: string;
   dueDateText: string;
   hasEmail: boolean;
+  /** "Oct 11" — the day the automatic reminder will fire, or null if already sent. */
+  autoReminderText: string | null;
+  /** True when the automatic reminder for this period has already been sent. */
+  alreadyReminded: boolean;
 }
 
 /**
@@ -54,6 +58,15 @@ export function RentReminderCard({ leases }: { leases: UpcomingLease[] }) {
                 <p className="truncate text-xs text-muted-foreground">
                   {l.unitName} · {l.propertyName} · due {l.dueDateText}
                 </p>
+                {l.alreadyReminded ? (
+                  <p className="text-xs text-muted-foreground">
+                    Automatic reminder already sent for this period.
+                  </p>
+                ) : l.autoReminderText ? (
+                  <p className="text-xs text-muted-foreground">
+                    Automatic reminder: {l.autoReminderText} at 8:00 AM
+                  </p>
+                ) : null}
               </div>
               <ReminderButton leaseId={l.leaseId} disabled={!l.hasEmail} />
             </li>

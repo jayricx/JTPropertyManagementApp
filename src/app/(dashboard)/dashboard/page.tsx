@@ -113,6 +113,7 @@ async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
       leaseId: leases.id,
       startDate: leases.startDate,
       rentDueDay: leases.rentDueDay,
+      rentReminderPeriodStart: leases.rentReminderPeriodStart,
       tenantFirst: tenants.firstName,
       tenantLast: tenants.lastName,
       tenantEmail: tenants.email,
@@ -147,6 +148,20 @@ async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
 
     if (nextStart.getTime() > horizon.getTime()) continue;
 
+    const alreadyReminded =
+      !!r.rentReminderPeriodStart &&
+      r.rentReminderPeriodStart.toISOString().slice(0, 10) === nextStart.toISOString().slice(0, 10);
+
+    // Auto-reminder fires 3 days before the due date (the cron runs at 8 AM).
+    const autoReminderDate = new Date(nextStart.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const autoReminderText = alreadyReminded
+      ? null
+      : autoReminderDate.toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+
     result.push({
       leaseId: r.leaseId,
       tenantName: `${r.tenantFirst} ${r.tenantLast}`.trim(),
@@ -159,6 +174,8 @@ async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
         timeZone: "UTC",
       }),
       hasEmail: Boolean(r.tenantEmail),
+      autoReminderText,
+      alreadyReminded,
     });
   }
 
