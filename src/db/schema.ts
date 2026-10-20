@@ -1142,6 +1142,28 @@ export const featureRequestStatusEnum = pgEnum("feature_request_status", [
   "declined",
 ]);
 
+// ---------------------------------------------------------------------------
+// Contact messages — anonymous "get in touch" submissions from the public site.
+//
+// Deliberately a separate table from `feature_requests`: those are tied to a
+// signed-in landlord (author, portfolio, plan), and contact messages come from
+// prospects and tenants who have no account. Mixing them would force a nullable
+// author onto a model that assumes one everywhere.
+// ---------------------------------------------------------------------------
+export const contactMessages = pgTable(
+  "contact_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 100 }).notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
+    subject: varchar("subject", { length: 150 }).notNull(),
+    message: text("message").notNull(),
+    status: varchar("status", { length: 20 }).default("open").notNull(),
+    repliedAt: timestamp("replied_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("contact_messages_created_at_idx").on(t.createdAt)],
+);
 export const featureRequests = pgTable(
   "feature_requests",
   {

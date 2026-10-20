@@ -50,6 +50,7 @@ const adminItems = [
   { href: "/admin/landlords", label: "Landlord accounts", icon: ShieldCheck },
   { href: "/admin/referrals", label: "Referral codes", icon: Gift },
   { href: "/admin/referrals/payouts", label: "Referral payouts", icon: Banknote },
+  { href: "/admin/contact", label: "Contact messages", icon: Inbox },
   { href: "/feedback/inbox", label: "Request inbox", icon: Inbox },
 ];
 

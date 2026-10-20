@@ -383,6 +383,22 @@ export const chargeTypeLabels: Record<ChargeType, string> = {
 /** Utility charges fold into the statement's utility subtotal. */
 export const utilityChargeTypes: ChargeType[] = ["electricity", "water"];
 
+export const contactSchema = z.object({
+  name: z.string().trim().min(1, "Your name is required").max(100),
+  email: z.string().trim().email("Enter a valid email address").max(255),
+  subject: z.string().trim().min(1, "A subject is required").max(150),
+  message: z
+    .string()
+    .trim()
+    .min(20, "Please write at least a couple of sentences")
+    .max(2000, "Keep it under 2000 characters"),
+  // Honeypot — must stay empty. Bots fill it; humans never see it.
+  website: z.string().max(0).optional().or(z.literal("")),
+});
+
+export type ContactFormValues = z.input<typeof contactSchema>;
+export type ContactFormParsed = z.output<typeof contactSchema>;
+
 export const chargeSchema = z
   .object({
     leaseId: z.uuid("Please select a lease"),
