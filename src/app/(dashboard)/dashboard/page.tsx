@@ -7,12 +7,16 @@ import {
   maintenanceRequests,
   payments,
   properties,
+  tenants,
   units,
 } from "@/db/schema";
 import { accessiblePropertyIds } from "@/lib/access";
+import { resolveDueDay, utcDay, periodIndexForDate, periodStartAt } from "@/lib/billing-periods";
 import { getGamificationOverview } from "@/lib/gamification";
-import { formatCurrency } from "@/lib/utils";
 import { GamificationPanel } from "@/components/gamification/gamification-panel";
+import { formatCurrency } from "@/lib/utils";
+import { RentReminderCard } from "@/components/dashboard/rent-reminder-card";
+import type { UpcomingLease } from "@/components/dashboard/rent-reminder-card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,6 +104,67 @@ async function getStats(userId: string): Promise<DashboardStats> {
   };
 }
 
+async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
+  const accessibleIds = await accessiblePropertyIds(userId);
+  if (accessibleIds.length === 0) return [];
+
+  const rows = await db
+    .select({
+      leaseId: leases.id,
+      startDate: leases.startDate,
+      rentDueDay: leases.rentDueDay,
+      tenantFirst: tenants.firstName,
+      tenantLast: tenants.lastName,
+      tenantEmail: tenants.email,
+      unitName: units.name,
+      propertyName: properties.name,
+    })
+    .from(leases)
+    .innerJoin(tenants, eq(leases.tenantId, tenants.id))
+    .innerJoin(units, eq(leases.unitId, units.id))
+    .innerJoin(properties, eq(units.propertyId, properties.id))
+    .where(
+      and(
+        inArray(properties.id, accessibleIds),
+        eq(leases.status, "active"),
+      ),
+    );
+
+  const today = new Date();
+  const todayUtc = new Date(`${today.toISOString().slice(0, 10)}T00:00:00Z`);
+  const horizon = new Date(todayUtc.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const result: UpcomingLease[] = [];
+  for (const r of rows) {
+    const leaseStart = utcDay(r.startDate);
+    const dueDay = resolveDueDay(leaseStart, r.rentDueDay);
+    const idx = periodIndexForDate(todayUtc, leaseStart, dueDay);
+    const currentStart = periodStartAt(idx, leaseStart, dueDay);
+    const nextStart =
+      currentStart.getTime() === todayUtc.getTime()
+        ? currentStart
+        : periodStartAt(idx + 1, leaseStart, dueDay);
+
+    if (nextStart.getTime() > horizon.getTime()) continue;
+
+    result.push({
+      leaseId: r.leaseId,
+      tenantName: `${r.tenantFirst} ${r.tenantLast}`.trim(),
+      unitName: r.unitName,
+      propertyName: r.propertyName,
+      dueDateText: nextStart.toLocaleDateString("en-PH", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      }),
+      hasEmail: Boolean(r.tenantEmail),
+    });
+  }
+
+  return result;
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   const [stats, gamification] = session?.user
@@ -113,6 +178,11 @@ export default async function DashboardPage() {
     stats && stats.totalUnits > 0
       ? Math.round((stats.occupiedUnits / stats.totalUnits) * 100)
       : 0;
+
+  // Upcoming rent (due within 7 days) for the manual reminder card.
+  const upcomingLeases: UpcomingLease[] = session?.user
+    ? await getUpcomingRentLeases(session.user.id)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -155,6 +225,10 @@ export default async function DashboardPage() {
           tone="rose"
         />
       </div>
+
+      {upcomingLeases.length > 0 && (
+        <RentReminderCard leases={upcomingLeases} />
+      )}
 
       {gamification && stats && stats.totalProperties > 0 && (
         <GamificationPanel overview={gamification} />

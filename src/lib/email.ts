@@ -441,13 +441,66 @@ export async function sendPaymentReceipt(r: PaymentReceipt): Promise<SendResult>
   });
 }
 
+export interface RentReminderEmail {
+  to: string;
+  tenantName: string;
+  amountText: string;
+  dueDateText: string;
+  unitName: string;
+  propertyName: string;
+  gcashNumber: string | null;
+  gcashName: string | null;
+  bankAccounts: { bankName: string; accountNumber: string; accountName: string }[];
+  portalUrl: string;
+}
+
+export async function sendRentReminderEmail(r: RentReminderEmail): Promise<SendResult> {
+  const tenantLabel = escapeHtml(r.tenantName);
+  const amountLabel = escapeHtml(r.amountText);
+  const unitLabel = escapeHtml(`${r.unitName} (${r.propertyName})`);
+  const dueLabel = escapeHtml(r.dueDateText);
+
+  const paymentLines: string[] = [];
+  if (r.gcashNumber) {
+    paymentLines.push(
+      `GCash: send ${r.amountText} to ${r.gcashNumber}` +
+        (r.gcashName ? ` (${r.gcashName})` : "") +
+        ", then submit the reference number on your portal.",
+    );
+  }
+  for (const b of r.bankAccounts) {
+    paymentLines.push(
+      `Bank transfer: ${b.bankName} — ${b.accountNumber} (${b.accountName}), then submit the reference number on your portal.`,
+    );
+  }
+  if (paymentLines.length === 0) {
+    paymentLines.push("Contact your landlord for payment details.");
+  }
+
+  const text =
+    `Hi ${r.tenantName},\n\n` +
+    `A reminder that your rent of ${r.amountText} for ${r.unitName} (${r.propertyName}) ` +
+    `is due on ${r.dueDateText}.\n\n` +
+    paymentLines.join("\n") +
+    `\n\nView your statement and payment history: ${r.portalUrl}\n\n` +
+    `— Renta-PH.net`;
+
+  const html = emailShell(
+    "Rent reminder",
+    `<p>Hi ${tenantLabel},</p>
+     <p>A reminder that your rent of <strong>${amountLabel}</strong> for <strong>${unitLabel}</strong> is due on <strong>${dueLabel}</strong>.</p>
+     <p style="white-space:pre-wrap;">${escapeHtml(paymentLines.join("\n"))}</p>
+     <p><a href="${r.portalUrl}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">View statement</a></p>`,
+  );
+
+  return sendEmail({ to: r.to, subject: `Rent reminder: ${r.amountText} due ${r.dueDateText}`, text, html });
+}
 export interface VerificationCodeEmail {
   to: string;
   name: string | null;
   code: string;
   expiresInMinutes: number;
 }
-
 export interface FeatureRequestUpdateEmail {
   to: string;
   name: string | null;

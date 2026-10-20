@@ -393,6 +393,9 @@ export const leases = pgTable(
     leaseEndReminderSentAt: timestamp("lease_end_reminder_sent_at", {
       mode: "date",
     }),
+    // The billing period (its start date) a rent reminder was last sent for,
+    // so the daily cron never nudges twice for the same period.
+    rentReminderPeriodStart: date("rent_reminder_period_start", { mode: "date" }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [
