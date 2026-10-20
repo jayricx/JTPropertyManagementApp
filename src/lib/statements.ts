@@ -268,18 +268,22 @@ export async function getLeaseStatement(
   const through =
     leaseEnd && leaseEnd.getTime() < today.getTime() ? leaseEnd : today;
   const maxMonths = options?.maxMonths ?? 12;
-  const periods = buildBillingPeriods({
-    leaseStart,
-    dueDay,
-    through,
-    maxPeriods: maxMonths,
-  });
+
+  // Periods are generated for every month the lease covers, but only the most
+  // recent `maxMonths` are shown. Totals, however, must cover *all* of them —
+  // otherwise a lease older than a year silently loses its older arrears from
+  // the statement, which is the one number a landlord actually relies on.
+  const allPeriods = buildBillingPeriods({ leaseStart, dueDay, through });
+  const displayPeriods = allPeriods.slice(-maxMonths);
+  const periods = displayPeriods;
 
   const rentAmount = Number(lease.rentAmount);
-  // One row per billing period, keyed by the period's start date so anything
-  // dated can be placed without guessing which "month" it belongs to.
-  const rows = new Map<string, MonthlyStatement>(
-    periods.map((period) => [
+  // Bucket charges/payments/readings into rows keyed by period start. Rows only
+  // exist for the displayed periods, so a late payment on an ended lease (or
+  // any payment that falls outside the displayed window) is still counted in
+  // the totals below rather than being silently dropped.
+  const allRows = new Map<string, MonthlyStatement>(
+    allPeriods.map((period) => [
       period.key,
       {
         periodStart: period.start,
@@ -298,11 +302,13 @@ export async function getLeaseStatement(
     ]),
   );
 
+  const readingsFor = (key: string) => allRows.get(key);
+
   for (const r of readingRows) {
     // Readings are still keyed by calendar month; the period containing that
     // month's last day is the one the reading was taken for.
     const key = legacyMonthPeriodKey(r.periodMonth, leaseStart, dueDay);
-    const row = key ? rows.get(key) : undefined;
+    const row = key ? allRows.get(key) : undefined;
     if (!row) continue;
     row.utilityLines.push({
       meterId: r.meterId,
@@ -324,7 +330,7 @@ export async function getLeaseStatement(
       : c.periodMonth
         ? legacyMonthPeriodKey(c.periodMonth, leaseStart, dueDay)
         : null;
-    const row = key ? rows.get(key) : undefined;
+    const row = key ? allRows.get(key) : undefined;
     if (!row) continue;
     row.chargeLines.push({
       id: c.id,
@@ -337,12 +343,11 @@ export async function getLeaseStatement(
 
   for (const p of paymentRows) {
     const key = periodKeyForDate(utcDay(p.paidDate), leaseStart, dueDay);
-    const row = key ? rows.get(key) : undefined;
+    const row = key ? allRows.get(key) : undefined;
     if (row) row.paid += Number(p.amount);
   }
 
-  const months = [...rows.values()];
-  for (const row of months) {
+  for (const row of allRows.values()) {
     const manualUtilityLines = row.chargeLines.filter((c) =>
       utilityChargeTypes.includes(c.type),
     );
@@ -371,11 +376,21 @@ export async function getLeaseStatement(
     row.chargeLines = [...manualUtilityLines, ...otherLines];
   }
 
-  const totalCharges = months.reduce((s, m) => s + m.chargesTotal, 0);
-  const totalPaid = months.reduce((s, m) => s + m.paid, 0);
+  const months = displayPeriods
+    .map((p) => allRows.get(p.key))
+    .filter((m): m is MonthlyStatement => Boolean(m));
+
+  const totalCharges = allPeriods.reduce(
+    (s, p) => s + (allRows.get(p.key)?.chargesTotal ?? 0),
+    0,
+  );
+  const totalPaid = allPeriods.reduce(
+    (s, p) => s + (allRows.get(p.key)?.paid ?? 0),
+    0,
+  );
 
   const currentKey = periodKeyForDate(today, leaseStart, dueDay);
-  const currentMonth = (currentKey ? rows.get(currentKey) : undefined) ?? null;
+  const currentMonth = (currentKey ? allRows.get(currentKey) : undefined) ?? null;
 
   // Every period for the add-charge picker, including the one starting next —
   // landlords bill upcoming dues as often as they chase old ones.
