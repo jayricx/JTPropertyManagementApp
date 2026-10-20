@@ -2,15 +2,14 @@ export const PLAN_TIERS = ["free", "starter", "pro", "business"] as const;
 
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
-// The ladder: Free 2 → Starter 10 → Pro 20 → Business 100 units.
+// The ladder: Free 5 → Starter 12 → Pro 25 → Business (unlimited).
 //
-// No plan is unlimited: Business caps at 100 units, and a portfolio offer for
-// larger landlords is deliberately left for later — hence the `number | null`
-// shape, ready for that tier to return one day. Every current tier is a number.
+// Business remains unlimited, which is why the `number | null` shape still
+// stands: `null` means "no cap", and `atLimit`/`remaining` already handle it.
 export const PLAN_UNIT_LIMITS: Record<PlanTier, number | null> = {
-  free: 2,
-  starter: 10,
-  pro: 20,
+  free: 5,
+  starter: 12,
+  pro: 25,
   business: null,
 };
 

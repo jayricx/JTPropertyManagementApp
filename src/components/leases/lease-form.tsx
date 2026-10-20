@@ -76,6 +76,7 @@ export function LeaseForm({ lease, unitOptions, tenantOptions }: LeaseFormProps)
       tenantId: lease?.tenantId ?? "",
       startDate: lease?.startDate ?? "",
       endDate: lease?.endDate ?? "",
+      rentDueDay: lease?.rentDueDay ?? "",
       rentAmount: lease?.rentAmount ?? "",
       depositAmount: lease?.depositAmount ?? "",
       depositReturned: lease?.depositReturned ?? "",
@@ -187,7 +188,7 @@ export function LeaseForm({ lease, unitOptions, tenantOptions }: LeaseFormProps)
                 )}
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <FormField
                 control={form.control}
                 name="startDate"
@@ -211,6 +212,30 @@ export function LeaseForm({ lease, unitOptions, tenantOptions }: LeaseFormProps)
                       <Input type="date" {...field} />
                     </FormControl>
                     <FormDescription>Leave empty for open-ended.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="rentDueDay"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rent due day</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={31}
+                        step={1}
+                        placeholder="Same as start"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Day of the month rent is due.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

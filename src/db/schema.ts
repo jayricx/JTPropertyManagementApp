@@ -371,6 +371,16 @@ export const leases = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     startDate: date("start_date", { mode: "date" }).notNull(),
     endDate: date("end_date", { mode: "date" }),
+    /**
+     * The day of the month rent falls due (1–31), anchoring the lease's billing
+     * periods.
+     *
+     * Null means "the same day the tenant moved in", which is both the default
+     * and the common case — so every existing lease keeps working unchanged
+     * without a backfill. Set explicitly only for the "moved in mid-month, rent
+     * due on the 1st" arrangement, which is common enough to be worth a field.
+     */
+    rentDueDay: integer("rent_due_day"),
     rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }).notNull(),
     depositAmount: numeric("deposit_amount", { precision: 12, scale: 2 })
       .default("0")
@@ -664,8 +674,22 @@ export const charges = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** Billing month, "YYYY-MM". */
-    periodMonth: varchar("period_month", { length: 7 }).notNull(),
+    /**
+     * Legacy calendar month, "YYYY-MM". Superseded by `periodStart`; null on
+     * anything filed since billing periods existed, and only read to place
+     * those older rows.
+     */
+    periodMonth: varchar("period_month", { length: 7 }),
+    /**
+     * The billing period this charge belongs to, as exact dates.
+     *
+     * Dates rather than a month key because "March" is genuinely ambiguous
+     * against a lease due on the 14th — the third is inside one period and the
+     * fourteenth starts the next. A charge filed without dates cannot be placed
+     * correctly, so entry now writes both boundaries.
+     */
+    periodStart: date("period_start", { mode: "date" }),
+    periodEnd: date("period_end", { mode: "date" }),
     type: chargeTypeEnum("type").notNull(),
     description: varchar("description", { length: 255 }),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),

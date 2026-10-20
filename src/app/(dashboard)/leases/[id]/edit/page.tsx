@@ -29,7 +29,7 @@ import {
 import { CustomFieldsCard } from "@/components/custom-fields/custom-fields-card";
 import { getLeaseStatement } from "@/lib/statements";
 import { getLeaseSignatures } from "@/lib/signatures";
-import { currentMonthKey, isUuid, listMonths, shiftMonth } from "@/lib/utils";
+import { isUuid } from "@/lib/utils";
 import type { LeaseFormValues } from "@/lib/validations";
 
 interface EditLeasePageProps {
@@ -59,6 +59,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
       tenantId: leases.tenantId,
       startDate: leases.startDate,
       endDate: leases.endDate,
+      rentDueDay: leases.rentDueDay,
       rentAmount: leases.rentAmount,
       depositAmount: leases.depositAmount,
       depositReturned: leases.depositReturned,
@@ -186,6 +187,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
     tenantId: lease.tenantId,
     startDate: toInputDate(lease.startDate),
     endDate: toInputDate(lease.endDate),
+    rentDueDay: lease.rentDueDay ?? "",
     rentAmount: lease.rentAmount === null ? "" : Number(lease.rentAmount),
     depositAmount:
       lease.depositAmount === null ? "" : Number(lease.depositAmount),
@@ -193,13 +195,6 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
     status: lease.status,
     notes: lease.notes ?? "",
   };
-
-  // Charge months: the past year plus the coming month, newest first.
-  const nowMonth = currentMonthKey();
-  const chargeMonthOptions = listMonths(
-    shiftMonth(nowMonth, -11),
-    shiftMonth(nowMonth, 1),
-  ).reverse();
 
   return (
     <div className="space-y-6">
@@ -222,9 +217,7 @@ export default async function EditLeasePage({ params }: EditLeasePageProps) {
         canEdit={canManage}
         canDefine={canDefine}
       />
-      {statement && (
-        <StatementTable statement={statement} canManage monthOptions={chargeMonthOptions} />
-      )}
+      {statement && <StatementTable statement={statement} canManage />}
       <ContractStatusCard
         leaseId={lease.id}
         open={openContract}

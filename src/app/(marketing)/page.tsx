@@ -111,7 +111,7 @@ export default function LandingPage() {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button size="lg" render={<Link href="/register" />}>
-              Start free — up to 2 units
+              Start free — up to 5 units
             </Button>
             <Button size="lg" variant="outline" render={<Link href="/pricing" />}>
               See plans from ₱199
@@ -287,7 +287,7 @@ export default function LandingPage() {
             Start with the building you already manage
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
-            Free for up to 2 units. ₱199 a month for up to 10. Your data
+            Free for up to 5 units. ₱199 a month for up to 12. Your data
             carries over if you upgrade.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">

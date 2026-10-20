@@ -11,7 +11,18 @@ import {
   units,
 } from "@/db/schema";
 import { utilityChargeTypes, type ChargeType, type LeaseStatus } from "@/lib/validations";
-import { currentMonthKey, listMonths, monthKey } from "@/lib/utils";
+import {
+  buildBillingPeriods,
+  formatBillingPeriod,
+  isoDate,
+  legacyMonthPeriodKey,
+  periodKeyForDate,
+  periodStartAt,
+  resolveDueDay,
+  utcDay,
+  type BillingPeriod,
+} from "@/lib/billing-periods";
+import { todayInManila } from "@/lib/utils";
 
 /**
  * A tenant's monthly statement of account — the missing "who owes what" view.
@@ -20,20 +31,24 @@ import { currentMonthKey, listMonths, monthKey } from "@/lib/utils";
  * `rentAmount` and payments were just recorded cash. A statement is computed
  * (never stored) from four sources so nothing can drift out of sync:
  *
- * - **Rent** — the lease's `rentAmount`, charged for every month the lease
- *   covers in the range.
+ * - **Rent** — the lease's `rentAmount`, charged once per billing period.
  * - **Utilities** — `meterReadings` for the lease's unit (sub-metered
  *   consumption × rate), plus any manual `charges` typed electricity/water
  *   (for landlords who split the actual bill by proportion).
  * - **Other charges** — `charges` typed dues/penalty/other.
- * - **Payments** — `payments` for the lease, bucketed by their `paidDate`
- *   month. A GCash/card payment covers everything in one lump, so it simply
- *   reduces the month's balance.
+ * - **Payments** — `payments` for the lease, bucketed into the period their
+ *   `paidDate` falls in. A GCash/card payment covers everything in one lump,
+ *   so it simply reduces that period's balance.
+ *
+ * A period runs from one rent-due date to the next, so a tenant who moved in on
+ * 14 February is billed "14 Feb – 14 Mar", not "February". That is both how
+ * landlords talk and the only version that never bills days before the tenant
+ * arrived.
  *
  * `outstanding` (total charged − total paid, over the shown range) is the
- * honest arrears figure; `amountDue` is the current month's balance, which is
- * what the portal offers to collect so a tenant is never asked for a runaway
- * lump sum in one go.
+ * honest arrears figure; `amountDue` is the period balance, which is what the
+ * portal offers to collect so a tenant is never asked for a runaway lump sum in
+ * one go.
  */
 
 export interface UtilityLine {
@@ -57,8 +72,18 @@ export interface ChargeLine {
 }
 
 export interface MonthlyStatement {
-  /** "YYYY-MM" */
-  periodMonth: string;
+  /**
+   * The billing period this row covers, as exact dates.
+   *
+   * `periodStart` is the day rent falls due for this period and `periodEnd` the
+   * day it falls due for the next one — so a tenant sees "14 Feb – 14 Mar" and
+   * knows precisely what a payment settles, rather than inferring it from a
+   * month name.
+   */
+  periodStart: string;
+  periodEnd: string;
+  /** "Feb 14 – Mar 14, 2025", ready to display. */
+  label: string;
   rent: number;
   /** Sub-metered electricity, plus manual electricity charges. */
   electricity: number;
@@ -77,6 +102,10 @@ export interface MonthlyStatement {
 export interface LeaseStatement {
   leaseId: string;
   unitName: string;
+  /** The day of the month rent falls due, anchoring every period below. */
+  dueDay: number;
+  /** Every period on the lease, newest first — for the add-charge picker. */
+  chargePeriods: BillingPeriod[];
   propertyName: string;
   tenantName: string;
   rentAmount: number;
@@ -85,7 +114,7 @@ export interface LeaseStatement {
   totalCharges: number;
   totalPaid: number;
   outstanding: number;
-  /** The current calendar month's row, when the range reaches it. */
+  /** The period containing today, when the lease reaches it. */
   currentMonth: MonthlyStatement | null;
 }
 
@@ -174,6 +203,7 @@ export async function getLeaseStatement(
       unitId: leases.unitId,
       startDate: leases.startDate,
       endDate: leases.endDate,
+      rentDueDay: leases.rentDueDay,
       rentAmount: leases.rentAmount,
       status: leases.status,
       unitName: units.name,
@@ -210,6 +240,7 @@ export async function getLeaseStatement(
       .select({
         id: charges.id,
         periodMonth: charges.periodMonth,
+        periodStart: charges.periodStart,
         type: charges.type,
         description: charges.description,
         amount: charges.amount,
@@ -227,21 +258,53 @@ export async function getLeaseStatement(
       .where(and(eq(payments.leaseId, leaseId), eq(payments.status, "paid"))),
   ]);
 
-  const startMonth = monthKey(lease.startDate);
-  const nowMonth = currentMonthKey();
-  const leaseEndMonth = lease.endDate ? monthKey(lease.endDate) : null;
-  // Show up to the current month, or the lease's end month if it already ended.
-  let endMonth = leaseEndMonth && leaseEndMonth < nowMonth ? leaseEndMonth : nowMonth;
-  if (endMonth < startMonth) endMonth = startMonth;
+  const leaseStart = utcDay(lease.startDate);
+  const leaseEnd = lease.endDate ? utcDay(lease.endDate) : null;
+  const dueDay = resolveDueDay(leaseStart, lease.rentDueDay);
+  const today = todayInManila();
 
-  let range = listMonths(startMonth, endMonth);
+  // The statement runs from the lease start to today — or to the end of the
+  // lease when that has already passed — bounded to the most recent periods.
+  const through =
+    leaseEnd && leaseEnd.getTime() < today.getTime() ? leaseEnd : today;
   const maxMonths = options?.maxMonths ?? 12;
-  if (range.length > maxMonths) range = range.slice(range.length - maxMonths);
+  const periods = buildBillingPeriods({
+    leaseStart,
+    dueDay,
+    through,
+    maxPeriods: maxMonths,
+  });
 
-  const readingsByMonth = new Map<string, UtilityLine[]>();
+  const rentAmount = Number(lease.rentAmount);
+  // One row per billing period, keyed by the period's start date so anything
+  // dated can be placed without guessing which "month" it belongs to.
+  const rows = new Map<string, MonthlyStatement>(
+    periods.map((period) => [
+      period.key,
+      {
+        periodStart: period.start,
+        periodEnd: period.end,
+        label: period.label,
+        rent: rentAmount,
+        electricity: 0,
+        water: 0,
+        otherCharges: 0,
+        chargesTotal: 0,
+        paid: 0,
+        balance: 0,
+        utilityLines: [],
+        chargeLines: [],
+      },
+    ]),
+  );
+
   for (const r of readingRows) {
-    const list = readingsByMonth.get(r.periodMonth) ?? [];
-    list.push({
+    // Readings are still keyed by calendar month; the period containing that
+    // month's last day is the one the reading was taken for.
+    const key = legacyMonthPeriodKey(r.periodMonth, leaseStart, dueDay);
+    const row = key ? rows.get(key) : undefined;
+    if (!row) continue;
+    row.utilityLines.push({
       meterId: r.meterId,
       type: r.meterType,
       label: r.meterLabel,
@@ -251,82 +314,101 @@ export async function getLeaseStatement(
       rate: Number(r.rate),
       amount: Number(r.amount),
     });
-    readingsByMonth.set(r.periodMonth, list);
   }
 
-  const chargesByMonth = new Map<string, ChargeLine[]>();
   for (const c of chargeRows) {
-    const list = chargesByMonth.get(c.periodMonth) ?? [];
-    list.push({
+    // New charges carry exact period dates; older ones only a calendar month,
+    // which is interpreted the same way as a reading above.
+    const key = c.periodStart
+      ? isoDate(utcDay(c.periodStart))
+      : c.periodMonth
+        ? legacyMonthPeriodKey(c.periodMonth, leaseStart, dueDay)
+        : null;
+    const row = key ? rows.get(key) : undefined;
+    if (!row) continue;
+    row.chargeLines.push({
       id: c.id,
       type: c.type,
       description: c.description,
       amount: Number(c.amount),
       manual: true,
     });
-    chargesByMonth.set(c.periodMonth, list);
   }
 
-  const paidByMonth = new Map<string, number>();
   for (const p of paymentRows) {
-    const key = monthKey(p.paidDate);
-    paidByMonth.set(key, (paidByMonth.get(key) ?? 0) + Number(p.amount));
+    const key = periodKeyForDate(utcDay(p.paidDate), leaseStart, dueDay);
+    const row = key ? rows.get(key) : undefined;
+    if (row) row.paid += Number(p.amount);
   }
 
-  const rentAmount = Number(lease.rentAmount);
-
-  const months: MonthlyStatement[] = range.map((periodMonth) => {
-    const utilityLines = readingsByMonth.get(periodMonth) ?? [];
-    const manualLines = chargesByMonth.get(periodMonth) ?? [];
-
-    const manualUtilityLines = manualLines.filter((c) =>
+  const months = [...rows.values()];
+  for (const row of months) {
+    const manualUtilityLines = row.chargeLines.filter((c) =>
       utilityChargeTypes.includes(c.type),
     );
-    const otherLines = manualLines.filter(
+    const otherLines = row.chargeLines.filter(
       (c) => !utilityChargeTypes.includes(c.type),
     );
 
-    const electricity =
-      utilityLines
+    row.electricity =
+      row.utilityLines
         .filter((r) => r.type === "electric")
         .reduce((sum, r) => sum + r.amount, 0) +
       manualUtilityLines
         .filter((c) => c.type === "electricity")
         .reduce((sum, c) => sum + c.amount, 0);
-    const water =
-      utilityLines
+    row.water =
+      row.utilityLines
         .filter((r) => r.type === "water")
         .reduce((sum, r) => sum + r.amount, 0) +
       manualUtilityLines
         .filter((c) => c.type === "water")
         .reduce((sum, c) => sum + c.amount, 0);
-    const otherCharges = otherLines.reduce((sum, c) => sum + c.amount, 0);
-    const rent = rentAmount;
-    const chargesTotal = rent + electricity + water + otherCharges;
-    const paid = paidByMonth.get(periodMonth) ?? 0;
-
-    return {
-      periodMonth,
-      rent,
-      electricity,
-      water,
-      otherCharges,
-      chargesTotal,
-      paid,
-      balance: chargesTotal - paid,
-      utilityLines,
-      chargeLines: [...manualUtilityLines, ...otherLines],
-    };
-  });
+    row.otherCharges = otherLines.reduce((sum, c) => sum + c.amount, 0);
+    row.chargesTotal =
+      row.rent + row.electricity + row.water + row.otherCharges;
+    row.balance = row.chargesTotal - row.paid;
+    row.chargeLines = [...manualUtilityLines, ...otherLines];
+  }
 
   const totalCharges = months.reduce((s, m) => s + m.chargesTotal, 0);
   const totalPaid = months.reduce((s, m) => s + m.paid, 0);
-  const currentMonth =
-    months.find((m) => m.periodMonth === nowMonth) ?? null;
+
+  const currentKey = periodKeyForDate(today, leaseStart, dueDay);
+  const currentMonth = (currentKey ? rows.get(currentKey) : undefined) ?? null;
+
+  // Every period for the add-charge picker, including the one starting next —
+  // landlords bill upcoming dues as often as they chase old ones.
+  const chargeThrough =
+    through.getTime() > leaseStart.getTime() ? through : leaseStart;
+  const chargeHistory = buildBillingPeriods({
+    leaseStart,
+    dueDay,
+    through: chargeThrough,
+  });
+  const nextIndex = chargeHistory.length;
+  const nextStart = periodStartAt(nextIndex, leaseStart, dueDay);
+  const nextEnd = periodStartAt(nextIndex + 1, leaseStart, dueDay);
+  const upcoming: BillingPeriod[] =
+    !leaseEnd || nextStart.getTime() <= leaseEnd.getTime()
+      ? [
+          {
+            start: isoDate(nextStart),
+            end: isoDate(nextEnd),
+            label: formatBillingPeriod(nextStart, nextEnd),
+            key: isoDate(nextStart),
+          },
+        ]
+      : [];
+  const chargePeriods = [...chargeHistory, ...upcoming]
+    .slice(-24)
+    .reverse();
 
   return {
     leaseId: lease.id,
     unitName: lease.unitName,
+    dueDay,
+    chargePeriods,
     propertyName: lease.propertyName,
     tenantName: `${lease.tenantFirst} ${lease.tenantLast}`.trim(),
     rentAmount,

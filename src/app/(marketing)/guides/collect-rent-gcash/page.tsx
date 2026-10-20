@@ -141,7 +141,7 @@ export default function CollectRentGcashGuide() {
 
       <div className="mt-8 flex flex-wrap gap-3">
         <Button render={<Link href="/register" />}>
-          Start free — up to 2 units
+          Start free — up to 5 units
         </Button>
         <Button variant="outline" render={<Link href="/pricing" />}>
           See plans from ₱199

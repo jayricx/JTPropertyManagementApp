@@ -85,6 +85,36 @@ const optionalNumber = (min: number, max: number) =>
     .optional()
     .transform((v) => (v === "" || v === undefined ? undefined : v));
 
+/**
+ * A day of the month (1–31), or empty for "derive it".
+ *
+ * Kept separate from `optionalNumber` because a due day is an integer: 14.5 is
+ * not a date, and silently truncating it would move a tenant's rent day.
+ */
+const optionalDayOfMonth = z
+  .union([
+    z.literal(""),
+    z
+      .number()
+      .int("Pick a whole day of the month")
+      .min(1, "Must be between 1 and 31")
+      .max(31, "Must be between 1 and 31"),
+    z
+      .string()
+      .trim()
+      .regex(/^\d{1,2}$/, "Must be between 1 and 31")
+      .transform(Number)
+      .pipe(
+        z
+          .number()
+          .int("Pick a whole day of the month")
+          .min(1, "Must be between 1 and 31")
+          .max(31, "Must be between 1 and 31"),
+      ),
+  ])
+  .optional()
+  .transform((v) => (v === "" || v === undefined ? undefined : v));
+
 export const propertySchema = z.object({
   name: z
     .string()
@@ -201,6 +231,9 @@ export const leaseSchema = z
     tenantId: z.uuid("Please select a tenant"),
     startDate: isoDate,
     endDate: z.union([z.literal(""), isoDate]).optional(),
+    // The day rent falls due each month. Empty means "the day the tenant moved
+    // in", which is the common arrangement and needs no extra bookkeeping.
+    rentDueDay: optionalDayOfMonth,
     rentAmount: optionalNumber(0, 1_000_000),
     depositAmount: optionalNumber(0, 1_000_000),
     // Native checkbox — "on" when checked, absent when unchecked.
@@ -353,7 +386,8 @@ export const utilityChargeTypes: ChargeType[] = ["electricity", "water"];
 export const chargeSchema = z
   .object({
     leaseId: z.uuid("Please select a lease"),
-    periodMonth: z.string().regex(monthPattern, "Pick a month"),
+    // Start date of the billing period — the day rent is due for it.
+    periodStart: isoDate,
     type: z.enum(chargeTypes),
     description: optionalText(255),
     amount: optionalNumber(0, 1_000_000),

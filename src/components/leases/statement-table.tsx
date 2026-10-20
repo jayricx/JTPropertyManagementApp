@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { ChargeDialog } from "@/components/leases/charge-dialog";
 import { DeleteChargeButton } from "@/components/leases/delete-charge-button";
-import { formatCurrency, formatPeriodMonth } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import {
   chargeTypeLabels,
   meterConsumptionUnits,
@@ -27,34 +27,38 @@ interface StatementTableProps {
   statement: LeaseStatement;
   /** Landlords can add and remove manual charges; tenants get a read-only view. */
   canManage?: boolean;
-  /** Selectable months for the add-charge dialog (defaults to the statement range). */
-  monthOptions?: string[];
 }
 
 /**
- * A lease's monthly statement of account — rent + sub-metered utilities +
- * manual charges − payments, per month. Shared by the landlord's lease page
+ * A lease's statement of account — rent + sub-metered utilities + manual
+ * charges − payments, per billing period. Shared by the landlord's lease page
  * and the tenant portal so both sides read the exact same numbers.
+ *
+ * Rows are labelled by period, not calendar month: a tenant who moved in on
+ * 14 February sees "14 Feb – 14 Mar", which is what their rent actually covers.
  */
 export function StatementTable({
   statement,
   canManage = false,
-  monthOptions,
 }: StatementTableProps) {
   const readings = statement.months.flatMap((m) =>
-    m.utilityLines.map((line) => ({ periodMonth: m.periodMonth, line })),
+    m.utilityLines.map((line) => ({
+      key: m.periodStart,
+      label: m.label,
+      line,
+    })),
   );
   const manualCharges = statement.months.flatMap((m) =>
-    m.chargeLines.map((line) => ({ periodMonth: m.periodMonth, line })),
+    m.chargeLines.map((line) => ({
+      key: m.periodStart,
+      label: m.label,
+      line,
+    })),
   );
-  const defaultMonth =
-    statement.currentMonth?.periodMonth ??
-    statement.months[statement.months.length - 1]?.periodMonth ??
+  const defaultPeriod =
+    statement.currentMonth?.periodStart ??
+    statement.months[statement.months.length - 1]?.periodStart ??
     "";
-  const chargeMonths =
-    monthOptions && monthOptions.length
-      ? monthOptions
-      : [...statement.months].reverse().map((m) => m.periodMonth);
 
   return (
     <Card>
@@ -65,11 +69,11 @@ export function StatementTable({
             Rent, utilities, and other charges against payments recorded.
           </CardDescription>
         </div>
-        {canManage && defaultMonth && (
+        {canManage && defaultPeriod && (
           <ChargeDialog
             leaseId={statement.leaseId}
-            defaultMonth={defaultMonth}
-            monthOptions={chargeMonths}
+            defaultPeriod={defaultPeriod}
+            periods={statement.chargePeriods}
           />
         )}
       </CardHeader>
@@ -97,14 +101,14 @@ export function StatementTable({
 
         {statement.months.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No statement months yet — the lease hasn&apos;t started.
+            No billing periods yet — the lease hasn&apos;t started.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Month</TableHead>
+                  <TableHead>Period</TableHead>
                   <TableHead className="text-right">Rent</TableHead>
                   <TableHead className="text-right">Electric</TableHead>
                   <TableHead className="text-right">Water</TableHead>
@@ -116,9 +120,9 @@ export function StatementTable({
               </TableHeader>
               <TableBody>
                 {statement.months.map((m) => (
-                  <TableRow key={m.periodMonth}>
+                  <TableRow key={m.periodStart}>
                     <TableCell className="whitespace-nowrap">
-                      {formatPeriodMonth(m.periodMonth)}
+                      {m.label}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {formatCurrency(m.rent)}
@@ -163,7 +167,7 @@ export function StatementTable({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Month</TableHead>
+                    <TableHead>Period</TableHead>
                     <TableHead>Meter</TableHead>
                     <TableHead className="text-right">Previous</TableHead>
                     <TableHead className="text-right">Current</TableHead>
@@ -173,11 +177,9 @@ export function StatementTable({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {readings.map(({ periodMonth, line }) => (
-                    <TableRow key={`${periodMonth}-${line.meterId}`}>
-                      <TableCell className="whitespace-nowrap">
-                        {formatPeriodMonth(periodMonth)}
-                      </TableCell>
+                  {readings.map(({ key, label, line }) => (
+                    <TableRow key={`${key}-${line.meterId}`}>
+                      <TableCell className="whitespace-nowrap">{label}</TableCell>
                       <TableCell>
                         {line.label ??
                           (line.type === "electric" ? "Electric" : "Water")}
@@ -212,7 +214,7 @@ export function StatementTable({
           <div>
             <h3 className="mb-2 text-sm font-medium">Other charges</h3>
             <ul className="divide-y rounded-lg border">
-              {manualCharges.map(({ periodMonth, line }) => (
+              {manualCharges.map(({ label, line }) => (
                 <li
                   key={line.id}
                   className="flex items-center justify-between gap-3 px-3 py-2"
@@ -223,8 +225,7 @@ export function StatementTable({
                         chargeTypeLabels[line.type as ChargeType]}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {chargeTypeLabels[line.type as ChargeType]} ·{" "}
-                      {formatPeriodMonth(periodMonth)}
+                      {chargeTypeLabels[line.type as ChargeType]} · {label}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

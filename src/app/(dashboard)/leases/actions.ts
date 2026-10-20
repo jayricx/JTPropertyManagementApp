@@ -25,6 +25,14 @@ import { saveLeaseSignature } from "@/lib/signatures";
 import { accountVerification } from "@/lib/signature-verification";
 import { isUuid } from "@/lib/utils";
 import {
+  fromIsoDate,
+  isoDate,
+  periodIndexForDate,
+  periodStartAt,
+  resolveDueDay,
+  utcDay,
+} from "@/lib/billing-periods";
+import {
   contractTermsSchema,
   chargeSchema,
   leaseNoteSchema,
@@ -311,6 +319,7 @@ function leaseDbValues(data: LeaseFormParsed) {
     // null (not undefined) so clearing the end date actually persists —
     // Drizzle skips undefined keys in .set()/.values().
     endDate: data.endDate ? new Date(`${data.endDate}T00:00:00Z`) : null,
+    rentDueDay: data.rentDueDay ?? null,
     rentAmount: String(data.rentAmount ?? 0),
     depositAmount: String(data.depositAmount ?? 0),
     depositReturned: data.depositReturned === "on",
@@ -483,10 +492,40 @@ export async function createChargeAction(
   const denied = await assertCanManageLease(session.user.id, parsed.data.leaseId);
   if (denied) return { error: denied };
 
+  // The dialog sends a period start; the end and the legacy month key are
+  // derived here from the lease's own due day, so a stale form can never file
+  // a charge into a period this lease does not have.
+  const [lease] = await db
+    .select({
+      startDate: leases.startDate,
+      endDate: leases.endDate,
+      rentDueDay: leases.rentDueDay,
+    })
+    .from(leases)
+    .where(eq(leases.id, parsed.data.leaseId))
+    .limit(1);
+  if (!lease) return { error: "Lease not found." };
+
+  const leaseStart = utcDay(lease.startDate);
+  const dueDay = resolveDueDay(leaseStart, lease.rentDueDay);
+  const periodStart = fromIsoDate(parsed.data.periodStart);
+  const index = periodIndexForDate(periodStart, leaseStart, dueDay);
+  if (
+    index < 0 ||
+    isoDate(periodStartAt(index, leaseStart, dueDay)) !==
+      parsed.data.periodStart
+  ) {
+    return { error: "That billing period does not belong to this lease." };
+  }
+  const periodEnd = periodStartAt(index + 1, leaseStart, dueDay);
+
   await db.insert(charges).values({
     leaseId: parsed.data.leaseId,
     userId: session.user.id,
-    periodMonth: parsed.data.periodMonth,
+    // Superseded by the exact dates below; left NULL on new rows.
+    periodMonth: null,
+    periodStart,
+    periodEnd,
     type: parsed.data.type,
     description: parsed.data.description,
     amount: String(parsed.data.amount ?? 0),

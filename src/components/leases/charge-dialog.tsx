@@ -39,19 +39,21 @@ import {
   type ChargeFormParsed,
   type ChargeFormValues,
 } from "@/lib/validations";
-import { formatPeriodMonth } from "@/lib/utils";
+import type { BillingPeriod } from "@/lib/billing-periods";
 import { createChargeAction } from "@/app/(dashboard)/leases/actions";
 
 interface ChargeDialogProps {
   leaseId: string;
-  defaultMonth: string;
-  monthOptions: string[];
+  /** Start date of the period the dialog opens on ("YYYY-MM-DD"). */
+  defaultPeriod: string;
+  /** The lease's billing periods, newest first. */
+  periods: BillingPeriod[];
 }
 
 export function ChargeDialog({
   leaseId,
-  defaultMonth,
-  monthOptions,
+  defaultPeriod,
+  periods,
 }: ChargeDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -60,7 +62,7 @@ export function ChargeDialog({
 
   const defaults: ChargeFormValues = {
     leaseId,
-    periodMonth: defaultMonth,
+    periodStart: defaultPeriod,
     type: "dues",
     description: "",
     amount: "",
@@ -151,14 +153,14 @@ export function ChargeDialog({
               />
               <FormField
                 control={form.control}
-                name="periodMonth"
+                name="periodStart"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Month</FormLabel>
+                    <FormLabel>Billing period</FormLabel>
                     <Select
-                      items={monthOptions.map((m) => ({
-                        value: m,
-                        label: formatPeriodMonth(m),
+                      items={periods.map((p) => ({
+                        value: p.start,
+                        label: p.label,
                       }))}
                       value={field.value}
                       onValueChange={(v) => field.onChange(v)}
@@ -169,9 +171,9 @@ export function ChargeDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {monthOptions.map((m) => (
-                          <SelectItem key={m} value={m}>
-                            {formatPeriodMonth(m)}
+                        {periods.map((p) => (
+                          <SelectItem key={p.start} value={p.start}>
+                            {p.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 const TIER_FEATURES = {
   free: [
-    "Up to 2 units",
+    `Up to ${PLAN_UNIT_LIMITS.free} units`,
     "Tenants & leases",
     "Rent logging",
     "Maintenance requests",
@@ -22,14 +22,14 @@ const TIER_FEATURES = {
     "Health score & badges",
   ],
   starter: [
-    "Up to 10 units",
+    `Up to ${PLAN_UNIT_LIMITS.starter} units`,
     "Everything in Free",
     "Co-owner collaboration",
     "Portfolio custom fields",
     "Reports & CSV export",
   ],
   pro: [
-    "Up to 20 units",
+    `Up to ${PLAN_UNIT_LIMITS.pro} units`,
     "Everything in Starter",
     "Lease-end alerts",
     "Lease attachments & notes",
