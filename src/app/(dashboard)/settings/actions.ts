@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { bankAccounts, portfolios, users } from "@/db/schema";
+import { accounts, bankAccounts, portfolios, users } from "@/db/schema";
 import { bankDisplayName, isKnownBankCode } from "@/lib/banks";
 import { emailDiagnostics, emailShell, sendEmail } from "@/lib/email";
 import { bankAccountSchema } from "@/lib/validations";
@@ -204,6 +204,36 @@ export async function deleteBankAccountAction(
  * way — this is a self-test, not an account-recovery flow, so there is no
  * enumeration concern.
  */
+/**
+ * Disconnect a Google identity from this account. Only allowed when the
+ * account still has a password, so nobody locks themselves out by unlinking
+ * the only way in.
+ */
+export async function unlinkGoogleAction(): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const [user] = await db
+    .select({ passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+  if (!user?.passwordHash) {
+    return { error: "Set a password first — otherwise you'd lock yourself out." };
+  }
+
+  await db
+    .delete(accounts)
+    .where(
+      and(
+        eq(accounts.userId, session.user.id),
+        eq(accounts.provider, "google"),
+      ),
+    );
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
 export async function sendTestEmailAction(
   _prev: TestEmailState,
   formData: FormData,

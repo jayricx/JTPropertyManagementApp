@@ -35,7 +35,7 @@ import { loginSchema, type LoginFormValues } from "@/lib/validations";
  */
 const SIGN_IN_ERRORS: Record<string, string> = {
   OAuthAccountNotLinked:
-    "That email already has an account. Sign in with your password instead.",
+    "That email already has a password account. Sign in with your password, then link Google from Settings — or use a different Google account.",
   OAuthSignin: "We couldn't start the Google sign-in. Please try again.",
   OAuthCallback: "Google sent back something unexpected. Please try again.",
   OAuthCreateAccount: "We couldn't finish creating your account. Please try again.",

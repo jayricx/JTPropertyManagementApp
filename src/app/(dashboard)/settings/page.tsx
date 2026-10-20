@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   BuildingIcon,
   KeyRoundIcon,
@@ -11,12 +11,13 @@ import {
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { bankAccounts, portfolioMembers, users } from "@/db/schema";
+import { accounts, bankAccounts, portfolioMembers, users } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import { googleSignInEnabled } from "@/lib/auth-providers";
 import { emailDiagnostics } from "@/lib/email";
 import { EmailTestForm } from "@/components/settings/email-test-form";
 import { BusinessNameForm } from "@/components/settings/business-name-form";
+import { GoogleAccountLink } from "@/components/settings/google-account-link";
 import { GcashSettingsForm } from "@/components/settings/gcash-settings-form";
 import {
   BankAccountsManager,
@@ -47,6 +48,7 @@ export default async function SettingsPage() {
     .select({
       gcashNumber: users.gcashNumber,
       gcashName: users.gcashName,
+      passwordHash: users.passwordHash,
     })
     .from(users)
     .where(eq(users.id, session.user.id))
@@ -112,6 +114,16 @@ export default async function SettingsPage() {
 
   const googleEnabled = googleSignInEnabled();
   const googleRedirectUrl = `${appUrl()}/api/auth/callback/google`;
+
+  const googleAccount = googleEnabled
+    ? await db
+        .select({ provider: accounts.provider })
+        .from(accounts)
+        .where(
+          and(eq(accounts.userId, session.user.id), eq(accounts.provider, "google")),
+        )
+        .limit(1)
+    : [];
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -289,6 +301,15 @@ export default async function SettingsPage() {
               <code className="block break-all rounded-md bg-muted px-3 py-2 text-xs">
                 {googleRedirectUrl}
               </code>
+              <div className="border-t pt-3">
+                <p className="mb-2 text-muted-foreground">
+                  Link or disconnect Google from this account:
+                </p>
+                <GoogleAccountLink
+                  linked={googleAccount.length > 0}
+                  hasPassword={Boolean(user?.passwordHash)}
+                />
+              </div>
             </>
           ) : (
             <p className="text-muted-foreground">
