@@ -41,9 +41,10 @@ export function RentReminderCard({ leases }: { leases: UpcomingLease[] }) {
           <BellIcon className="size-5" /> Rent due soon
         </CardTitle>
         <CardDescription>
-          Automatic reminders are sent 3 days before the due date. Use the
-          button below to send one manually — useful for nudging earlier or
-          resending after a tenant ignores the first one.
+          Automatic reminders are sent 3 days before the due date at 8:00 AM
+          (Philippine time). Use the button below to send one manually —
+          useful for nudging earlier or resending after a tenant ignores the
+          first one.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -64,7 +65,7 @@ export function RentReminderCard({ leases }: { leases: UpcomingLease[] }) {
                   </p>
                 ) : l.autoReminderText ? (
                   <p className="text-xs text-muted-foreground">
-                    Automatic reminder: {l.autoReminderText} at 8:00 AM
+                    Automatic reminder: {l.autoReminderText} at 8:00 AM (PH time)
                   </p>
                 ) : null}
               </div>

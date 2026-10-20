@@ -10,6 +10,7 @@ import {
 } from "@/lib/billing-periods";
 import { sendRentReminderEmail } from "@/lib/email";
 import { appUrl } from "@/lib/app-url";
+import { todayInManila } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const now = new Date();
-  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  const today = todayInManila();
   const horizon = new Date(today.getTime() + REMIND_WITHIN_DAYS * 24 * 60 * 60 * 1000);
 
   // Active leases with a tenant email. We compute the due date per lease
