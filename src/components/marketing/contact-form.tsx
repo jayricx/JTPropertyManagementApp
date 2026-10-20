@@ -55,8 +55,7 @@ export function ContactForm() {
         <CheckCircle2Icon className="size-8 text-primary" />
         <p className="font-medium">Got it — thanks for writing.</p>
         <p className="text-sm text-muted-foreground">
-          We&apos;ll reply to your email within a few days, depending on the
-          request. If it&apos;s urgent, reach out on Facebook.
+          We&apos;ll get back to you. If it&apos;s urgent, reach out on Facebook.
         </p>
       </div>
     );

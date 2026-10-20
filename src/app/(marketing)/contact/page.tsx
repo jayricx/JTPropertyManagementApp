@@ -12,7 +12,7 @@ import { ContactForm } from "@/components/marketing/contact-form";
 export const metadata: Metadata = {
   title: "Contact us — Renta-PH.net",
   description:
-    "Get in touch with the Renta-PH.net team. We read every message and reply within a few days.",
+    "Get in touch with the Renta-PH.net team. We read every message.",
 };
 
 const FACEBOOK_URL = "https://www.facebook.com/share/1LfhDZj49R/";
@@ -27,8 +27,7 @@ export default function ContactPage() {
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
           We&apos;re a small team building Renta-PH.net for Filipino landlords.
-          We read every message and reply within a few days, depending on the
-          request. English or Filipino — either is fine.
+          We read every message.
         </p>
       </div>
 
