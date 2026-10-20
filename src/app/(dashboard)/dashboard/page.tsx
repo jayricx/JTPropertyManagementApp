@@ -12,6 +12,7 @@ import {
 } from "@/db/schema";
 import { accessiblePropertyIds } from "@/lib/access";
 import { resolveDueDay, utcDay, periodIndexForDate, periodStartAt } from "@/lib/billing-periods";
+import { todayInManila } from "@/lib/utils";
 import { getGamificationOverview } from "@/lib/gamification";
 import { GamificationPanel } from "@/components/gamification/gamification-panel";
 import { formatCurrency } from "@/lib/utils";
@@ -132,7 +133,7 @@ async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
     );
 
   const today = new Date();
-  const todayUtc = new Date(`${today.toISOString().slice(0, 10)}T00:00:00Z`);
+  const todayUtc = todayInManila();
   const horizon = new Date(todayUtc.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const result: UpcomingLease[] = [];
@@ -159,7 +160,7 @@ async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
       : autoReminderDate.toLocaleDateString("en-PH", {
           month: "short",
           day: "numeric",
-          timeZone: "UTC",
+          timeZone: "Asia/Manila",
         });
 
     result.push({
@@ -171,7 +172,7 @@ async function getUpcomingRentLeases(userId: string): Promise<UpcomingLease[]> {
         month: "short",
         day: "numeric",
         year: "numeric",
-        timeZone: "UTC",
+        timeZone: "Asia/Manila",
       }),
       hasEmail: Boolean(r.tenantEmail),
       autoReminderText,
