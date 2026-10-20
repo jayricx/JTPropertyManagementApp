@@ -5,10 +5,23 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { contactMessages } from "@/db/schema";
 import { contactSchema, type ContactFormParsed } from "@/lib/validations";
+import { emailShell, escapeHtml, sendEmail } from "@/lib/email";
 
 export type ContactActionState =
   | { error?: string; success?: boolean }
   | null;
+
+/**
+ * Where contact form submissions go. Defaults to the Resend/Gmail account's
+ * own address when unset, so a fresh deployment still delivers somewhere.
+ */
+function contactRecipient(): string {
+  return (
+    process.env.CONTACT_EMAIL?.trim() ||
+    process.env.GMAIL_USER?.trim() ||
+    "notifications@renta-ph.net"
+  );
+}
 
 /**
  * Public contact form submission. No auth required — prospects and tenants
@@ -45,6 +58,23 @@ export async function submitContactAction(
     email: data.email,
     subject: data.subject,
     message: data.message,
+  });
+
+  // Fire-and-forget: the message is already stored, so a failed email doesn't
+  // lose the submission. The operator can still read it in /admin/contact.
+  void sendEmail({
+    to: contactRecipient(),
+    subject: `[Contact] ${data.subject}`,
+    text: `From: ${data.name} <${data.email}>\n\n${data.message}`,
+    html: emailShell(
+      "New contact message",
+      `<p><strong>From:</strong> ${escapeHtml(data.name)} &lt;${escapeHtml(data.email)}&gt;</p>
+       <p><strong>Subject:</strong> ${escapeHtml(data.subject)}</p>
+       <hr />
+       <p style="white-space: pre-wrap;">${escapeHtml(data.message)}</p>`,
+    ),
+  }).catch((err) => {
+    console.error("[contact] email send failed:", err);
   });
 
   revalidatePath("/admin/contact");
