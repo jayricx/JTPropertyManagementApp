@@ -4,11 +4,12 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
-import { maintenanceRequests, tenants, units } from "@/db/schema";
+import { maintenanceRequests, tenants, units, documents } from "@/db/schema";
 import { canManageProperty } from "@/lib/access";
 import { canManagePortfolio } from "@/lib/portfolios";
 import { awardXp } from "@/lib/gamification";
 import { maintenanceSchema, type MaintenanceFormParsed } from "@/lib/validations";
+import { validateMediaFile, validateMediaSelection, sanitizeFileName } from "@/lib/attachments";
 
 /** `ok` lets dialog forms close themselves after a successful mutation. */
 export type ActionState = { error?: string; ok?: boolean } | null;
@@ -46,6 +47,48 @@ async function ownsTenant(userId: string, tenantId: string) {
   return row ? canManagePortfolio(userId, row.portfolioId) : false;
 }
 
+/** Attach uploaded photos/videos to a maintenance request, best-effort. */
+async function attachMedia(
+  requestId: string,
+  propertyId: string,
+  unitId: string,
+  userId: string,
+  formData: FormData,
+): Promise<string | null> {
+  const media = formData
+    .getAll("files")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (media.length === 0) return null;
+
+  for (const file of media) {
+    const check = validateMediaFile(file);
+    if (!check.ok) return check.error;
+  }
+  const selection = validateMediaSelection(media);
+  if (!selection.ok) return selection.error;
+
+  for (const file of media) {
+    try {
+      const id = crypto.randomUUID();
+      const bytes = Buffer.from(await file.arrayBuffer());
+      await db.insert(documents).values({
+        id,
+        userId,
+        maintenanceRequestId: requestId,
+        propertyId,
+        unitId,
+        name: sanitizeFileName(file.name),
+        url: `/api/documents/${id}`,
+        type: file.type,
+        sizeBytes: bytes.byteLength,
+        data: bytes.toString("base64"),
+      });
+    } catch {
+      console.error("[maintenance] attachment failed", file.name);
+    }
+  }
+  return null;
+}
 function maintenanceDbValues(data: MaintenanceFormParsed) {
   return {
     propertyId: data.propertyId,
@@ -86,12 +129,27 @@ export async function createMaintenanceAction(
     return { error: "Tenant not found." };
   }
 
-  await db.insert(maintenanceRequests).values({
+  const [created] = await db.insert(maintenanceRequests).values({
     ...maintenanceDbValues(parsed.data),
     userId: session.user.id,
     // Stamping resolvedAt here lets requests be created as already resolved.
     resolvedAt: parsed.data.status === "resolved" ? new Date() : null,
-  });
+  }).returning({ id: maintenanceRequests.id });
+
+  const attachError = await attachMedia(
+    created.id,
+    parsed.data.propertyId,
+    parsed.data.unitId,
+    session.user.id,
+    formData,
+  );
+  if (attachError) {
+    // Request was created; only the photos failed. Surface the error but don't
+    // lose the report.
+    revalidatePath("/maintenance");
+    revalidatePath("/dashboard");
+    return { error: attachError, ok: true };
+  }
 
   await awardXp(session.user.id, "maintenance_created");
   revalidatePath("/maintenance");
@@ -168,6 +226,15 @@ export async function updateMaintenanceAction(
       updatedAt: new Date(),
     })
     .where(eq(maintenanceRequests.id, requestId));
+
+  // Attach any newly picked photos/videos (best-effort).
+  await attachMedia(
+    requestId,
+    parsed.data.propertyId,
+    parsed.data.unitId,
+    session.user.id,
+    formData,
+  );
 
   // Reward actually fixing things — only on the new→resolved transition.
   if (isResolved && !wasResolved) {

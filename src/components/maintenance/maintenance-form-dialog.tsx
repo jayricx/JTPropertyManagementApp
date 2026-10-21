@@ -3,7 +3,8 @@
 import { useTransition, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PencilIcon, PlusIcon } from "lucide-react";
+import { PencilIcon, PlusIcon, PaperclipIcon } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -70,6 +71,7 @@ export function MaintenanceFormDialog({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<MaintenanceFormValues, unknown, MaintenanceFormParsed>({
     resolver: zodResolver(maintenanceSchema),
@@ -97,6 +99,14 @@ export function MaintenanceFormDialog({
     });
     if (request) formData.set("requestId", request.id);
 
+    // Attach any picked photos/videos. Best-effort on the server side.
+    const files = fileInputRef.current?.files;
+    if (files) {
+      for (const file of Array.from(files)) {
+        formData.append("files", file);
+      }
+    }
+
     setError(null);
     startTransition(async () => {
       const result = await action(null, formData);
@@ -107,6 +117,7 @@ export function MaintenanceFormDialog({
       // Success — close and reset the dialog.
       setOpen(false);
       form.reset();
+      if (fileInputRef.current) fileInputRef.current.value = "";
     });
   }
 
@@ -381,6 +392,22 @@ export function MaintenanceFormDialog({
                 </FormItem>
               )}
             />
+            <div className="space-y-2">
+              <FormLabel className="flex items-center gap-2">
+                <PaperclipIcon className="size-4" />
+                Photos / videos (optional)
+              </FormLabel>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/mp4,video/quicktime,video/webm"
+                multiple
+              />
+              <p className="text-xs text-muted-foreground">
+                Up to 3 files, 4 MB each. Images show inline; videos open in a
+                new tab.
+              </p>
+            </div>
             {error && (
               <p className="text-sm font-medium text-destructive">{error}</p>
             )}
