@@ -172,7 +172,7 @@ export default async function PropertyDetailPage({
     bedrooms: u.bedrooms ?? "",
     bathrooms: u.bathrooms === null ? "" : Number(u.bathrooms),
     rentAmount: u.rentAmount === null ? "" : Number(u.rentAmount),
-    sqft: u.sqft ?? "",
+    sqm: u.sqm ?? "",
     status: u.status,
     notes: u.notes ?? "",
   });
@@ -256,7 +256,7 @@ export default async function PropertyDetailPage({
                   <TableHead>Tenant</TableHead>
                   <TableHead className="text-right">Beds</TableHead>
                   <TableHead className="text-right">Baths</TableHead>
-                  <TableHead className="text-right">Sqft</TableHead>
+                  <TableHead className="text-right">Sq m</TableHead>
                   <TableHead className="text-right">Rent</TableHead>
                   <TableHead>Status</TableHead>
                   {canManage && (
@@ -278,7 +278,7 @@ export default async function PropertyDetailPage({
                       {u.bathrooms ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {u.sqft ?? "—"}
+                      {u.sqm ?? "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       {u.rentAmount ? formatCurrency(u.rentAmount) : "—"}

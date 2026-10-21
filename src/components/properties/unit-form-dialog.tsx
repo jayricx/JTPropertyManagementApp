@@ -88,7 +88,7 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
       bedrooms: unit?.bedrooms ?? "",
       bathrooms: unit?.bathrooms ?? "",
       rentAmount: unit?.rentAmount ?? "",
-      sqft: unit?.sqft ?? "",
+      sqm: unit?.sqm ?? "",
       status: unit?.status ?? "vacant",
       notes: unit?.notes ?? "",
     },
@@ -234,16 +234,16 @@ export function UnitFormDialog({ propertyId, unit }: UnitFormDialogProps) {
               />
               <FormField
                 control={form.control}
-                name="sqft"
+                name="sqm"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Square feet</FormLabel>
+                    <FormLabel>Square meters</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         inputMode="numeric"
                         min={0}
-                        placeholder="850"
+                        placeholder="85"
                         {...field}
                       />
                     </FormControl>

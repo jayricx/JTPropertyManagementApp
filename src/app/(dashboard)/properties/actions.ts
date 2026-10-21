@@ -175,7 +175,7 @@ function unitDbValues(data: UnitFormParsed) {
       data.bathrooms === undefined ? undefined : String(data.bathrooms),
     rentAmount:
       data.rentAmount === undefined ? undefined : String(data.rentAmount),
-    sqft: data.sqft,
+    sqm: data.sqm,
     status: data.status,
     notes: data.notes,
   };

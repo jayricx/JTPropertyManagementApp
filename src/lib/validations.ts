@@ -172,7 +172,7 @@ export const unitSchema = z.object({
   bedrooms: optionalNumber(0, 50),
   bathrooms: optionalNumber(0, 50),
   rentAmount: optionalNumber(0, 1_000_000),
-  sqft: optionalNumber(0, 10_000_000),
+  sqm: optionalNumber(0, 10_000_000),
   status: z.enum(unitStatuses),
   notes: optionalText(5000),
 });

@@ -250,7 +250,7 @@ export const units = pgTable(
     bedrooms: integer("bedrooms"),
     bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
     rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }),
-    sqft: integer("sqft"),
+    sqm: integer("sqm"),
     status: unitStatusEnum("status").default("vacant").notNull(),
     notes: text("notes"),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
