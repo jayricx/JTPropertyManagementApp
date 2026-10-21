@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
  * One landing spot for both roles: the dashboard layout forwards a `tenant`
  * account on to the portal, the same way the password form routes by role.
  */
-const AFTER_SIGN_IN = "/dashboard";
+const AFTER_SIGN_IN = "/post-login";
 
 /**
  * "Continue with Google" with an "or" rule beneath it. Rendered only when the

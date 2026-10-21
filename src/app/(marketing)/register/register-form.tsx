@@ -180,7 +180,7 @@ export function RegisterForm({
         router.push("/login");
         return;
       }
-      router.push("/dashboard");
+      router.push("/post-login");
       router.refresh();
     } catch {
       setCodeError("Something went wrong. Please try again.");

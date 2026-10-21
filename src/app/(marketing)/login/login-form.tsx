@@ -86,15 +86,10 @@ export function LoginForm({
         return;
       }
       // Landlords land on the dashboard, tenant accounts on the portal.
-      let destination = "/dashboard";
-      try {
-        const res = await fetch("/api/auth/session");
-        const sess = await res.json();
-        if (sess?.user?.role === "tenant") destination = "/portal";
-      } catch {
-        // Fall through to the dashboard; the layout guard bounces tenants.
-      }
-      router.push(destination);
+      // The dashboard layout is the authority on role routing — it redirects
+      // tenants server-side, so we don't depend on a client-side session
+      // fetch that may not have the cookie yet.
+      router.push("/post-login");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
