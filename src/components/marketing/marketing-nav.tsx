@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { BrandMark } from "@/components/marketing/brand-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -68,6 +69,7 @@ export function MarketingNav() {
 
         {/* Desktop actions */}
         <div className="hidden items-center gap-2 md:flex">
+          <ThemeToggle />
           <Button variant="ghost" size="sm" render={<Link href="/login" />}>
             Sign in
           </Button>
@@ -133,6 +135,9 @@ export function MarketingNav() {
               ))}
             </nav>
             <div className="space-y-2 border-t p-4">
+              <div className="flex justify-end">
+                <ThemeToggle />
+              </div>
               <Link
                 href="/login"
                 onClick={() => setMobileOpen(false)}
