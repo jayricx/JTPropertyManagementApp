@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { HeroImage } from "@/components/marketing/hero-image";
 import type { Metadata } from "next";
 import {
   BadgeCheck,
@@ -96,37 +95,32 @@ export default function LandingPage() {
     <div className="flex flex-col">
       {/* --------------------------------------------------------------- hero */}
       <section className="px-6 pt-16 pb-12 sm:pt-24 sm:pb-16">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
-          <div className="text-center lg:text-left">
-            <p className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
-              <BadgeCheck className="size-3.5" />
-              Built in the Philippines
-            </p>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-              Property management for Filipino landlords
-            </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground lg:mx-0">
-              Collect rent the way your tenants actually pay — GCash or bank
-              transfer, with a reference number and a receipt photo you can check.
-              Bill each tenant their exact share of the electric bill. Keep
-              properties, tenants and leases in one place.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start">
-              <Button size="lg" render={<Link href="/register" />}>
-                Start free — up to 5 units
-              </Button>
-              <Button size="lg" variant="outline" render={<Link href="/pricing" />}>
-                See plans from ₱199
-              </Button>
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              No credit card. No GCash merchant account needed — tenants pay you
-              directly.
-            </p>
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
+            <BadgeCheck className="size-3.5" />
+            Built in the Philippines
+          </p>
+          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+            Property management for Filipino landlords
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
+            Collect rent the way your tenants actually pay — GCash or bank
+            transfer, with a reference number and a receipt photo you can check.
+            Bill each tenant their exact share of the electric bill. Keep
+            properties, tenants and leases in one place.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Button size="lg" render={<Link href="/register" />}>
+              Start free — up to 5 units
+            </Button>
+            <Button size="lg" variant="outline" render={<Link href="/pricing" />}>
+              See plans from ₱199
+            </Button>
           </div>
-          <div className="relative aspect-[4/3] overflow-hidden rounded-xl border bg-muted/30">
-            <HeroImage />
-          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            No credit card. No GCash merchant account needed — tenants pay you
+            directly.
+          </p>
         </div>
       </section>
 
