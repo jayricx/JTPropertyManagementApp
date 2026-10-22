@@ -73,7 +73,11 @@ export default function GuidesIndex() {
       </div>
 
       <p className="mt-10 border-t pt-6 text-sm text-muted-foreground">
-        Have a question the guides don&apos;t answer? Check the{" "}
+        Looking for more? Browse all{" "}
+        <Link href="/learn" className="underline underline-offset-4">
+          guides and articles
+        </Link>
+        , or check the{" "}
         <Link href="/faq" className="underline underline-offset-4">
           FAQ
         </Link>

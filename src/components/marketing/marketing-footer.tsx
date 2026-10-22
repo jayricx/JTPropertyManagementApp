@@ -15,9 +15,10 @@ const COLUMNS = [
   {
     heading: "Learn",
     links: [
-      { href: "/guides", label: "Guides" },
+      { href: "/learn", label: "All guides and articles" },
       { href: "/guides/split-utility-bill", label: "Splitting a utility bill" },
       { href: "/guides/collect-rent-gcash", label: "Collecting rent by GCash" },
+      { href: "/learn/handle-unpaid-rent", label: "Handling unpaid rent" },
     ],
   },
   {
