@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { HeroImage } from "@/components/marketing/hero-image";
 import type { Metadata } from "next";
 import {
   BadgeCheck,
@@ -125,22 +125,7 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="relative aspect-[4/3] overflow-hidden rounded-xl border bg-muted/30">
-            {/* Replace /images/hero-property.jpg with a real photo:
-                - A Filipino landlord checking their phone in front of a small
-                  apartment building or boarding house
-                - Or a phone screen showing a GCash payment notification
-                - Recommended size: 1200x900px, compressed to <200KB
-                - Free sources: Unsplash, Pexels (search "apartment building
-                  philippines" or "property manager phone")
-                - Place the file in public/images/ */}
-            <Image
-              src="/images/hero-property.jpg"
-              alt="Filipino landlord checking rent payments on their phone"
-              fill
-              className="object-cover"
-              priority
-              sizes="(max-width: 1024px) 100vw, 50vw"
-            />
+            <HeroImage />
           </div>
         </div>
       </section>
