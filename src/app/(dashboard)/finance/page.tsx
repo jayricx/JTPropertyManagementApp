@@ -172,7 +172,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
 
   // Tab + pagination. Only Income and Expenses paginate; P&L is a summary.
   const activeTab =
-    tabRaw === "expenses" ? "expenses" : tabRaw === "pnl" ? "pnl" : "income";
+    tabRaw === "expenses" ? "expenses" : "income";
   // Records booked to no property ("Not linked"/unassigned) belong to no
   // property, so they drop out whenever a filter is active.
   const inFilter = (propertyId: string | null) =>
@@ -373,8 +373,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       )}
 
       <div className="flex gap-1 border-b">
-        {(["income", "expenses", "pnl"] as const).map((t) => {
-          const label = t === "income" ? "Income" : t === "expenses" ? "Expenses" : "P&L";
+        {(["income", "expenses"] as const).map((t) => {
+          const label = t === "income" ? "Income" : "Expenses";
           const href = `/finance?tab=${t}${propertyFilter ? `&properties=${propertyFilter.join(",")}` : ""}`;
           return (
             <Link
@@ -573,74 +573,6 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         </Card>
       )}
 
-      {activeTab === "pnl" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Per-property P&L</CardTitle>
-            <CardDescription>
-              {isFiltered
-                ? "Income minus expenses for the selected properties."
-                : "Income minus expenses for each property. Payments not linked to a lease count as unassigned."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {pnlRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {isFiltered
-                  ? "No income or expenses for the selected properties."
-                  : "Record income and expenses to see per-property profitability."}
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Property</TableHead>
-                    <TableHead className="text-right">Income</TableHead>
-                    <TableHead className="text-right">Expenses</TableHead>
-                    <TableHead className="text-right">Net</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pnlRows.map((r) => (
-                    <TableRow key={r.key}>
-                      <TableCell>
-                        {r.label === "Unassigned" ? (
-                          <span className="text-muted-foreground">Unassigned</span>
-                        ) : (
-                          r.label
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(r.income)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(r.expense)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(r.net)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow>
-                    <TableCell>Total</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(totalIncome)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(totalExpenses)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(net)}
-                    </TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>
