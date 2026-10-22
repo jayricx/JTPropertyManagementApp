@@ -1,4 +1,5 @@
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import {
@@ -60,7 +61,15 @@ const priorityClass: Record<MaintenancePriority, string> = {
   low: "border-border bg-muted text-muted-foreground",
 };
 
-export default async function MaintenancePage() {
+interface MaintenancePageProps {
+  searchParams: Promise<{ status?: string }>;
+}
+
+export default async function MaintenancePage({ searchParams }: MaintenancePageProps) {
+  const { status: statusRaw } = await searchParams;
+  const statusFilter = statusRaw && ["new", "in_progress", "resolved", "cancelled"].includes(statusRaw)
+    ? statusRaw
+    : "all";
   const session = await auth();
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
@@ -99,7 +108,14 @@ export default async function MaintenancePage() {
       .innerJoin(properties, eq(maintenanceRequests.propertyId, properties.id))
       .innerJoin(units, eq(maintenanceRequests.unitId, units.id))
       .leftJoin(tenants, eq(maintenanceRequests.tenantId, tenants.id))
-      .where(inArray(maintenanceRequests.propertyId, accessibleIds))
+      .where(
+        statusFilter !== "all"
+          ? and(
+              inArray(maintenanceRequests.propertyId, accessibleIds),
+              eq(maintenanceRequests.status, statusFilter as MaintenanceStatus),
+            )
+          : inArray(maintenanceRequests.propertyId, accessibleIds),
+      )
       // Open requests first, then resolved, then cancelled — newest first.
       .orderBy(
         sql`case ${maintenanceRequests.status} when 'new' then 0 when 'in_progress' then 1 when 'resolved' then 2 else 3 end`,
@@ -203,12 +219,47 @@ export default async function MaintenancePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Requests</CardTitle>
-          <CardDescription>
-            {requestRows.length === 0
-              ? "No requests yet."
-              : `${openCount} open · ${requestRows.length} total`}
-          </CardDescription>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <CardTitle>Requests</CardTitle>
+              <CardDescription>
+                {requestRows.length === 0
+                  ? "No requests yet."
+                  : `${openCount} open · ${requestRows.length} total`}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(["all", "new", "in_progress", "resolved", "cancelled"] as const).map(
+                (s) => {
+                  const label =
+                    s === "all"
+                      ? "All"
+                      : s === "in_progress"
+                        ? "In progress"
+                        : s === "new"
+                          ? "New"
+                          : s === "resolved"
+                            ? "Resolved"
+                            : "Cancelled";
+                  const href =
+                    s === "all" ? "/maintenance" : `/maintenance?status=${s}`;
+                  return (
+                    <Link
+                      key={s}
+                      href={href}
+                      className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                        statusFilter === s
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
+                    >
+                      {label}
+                    </Link>
+                  );
+                },
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {requestRows.length === 0 ? (

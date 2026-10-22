@@ -1,4 +1,5 @@
 import { asc, desc, eq, inArray, or } from "drizzle-orm";
+import Link from "next/link";
 import { Coins, PaperclipIcon, Receipt, Wallet } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
@@ -25,6 +26,7 @@ import { ExpenseRowActions } from "@/components/finance/expense-row-actions";
 import { PaymentFormDialog } from "@/components/finance/payment-form-dialog";
 import { PaymentReviewActions } from "@/components/finance/payment-review-actions";
 import { PaymentRowActions } from "@/components/finance/payment-row-actions";
+import { Pagination } from "@/components/ui/pagination";
 import { PropertyFilter } from "@/components/filters/property-filter";
 import {
   accessiblePropertyIds,
@@ -51,11 +53,11 @@ function toInputDate(value: Date | null): string {
 }
 
 interface FinancePageProps {
-  searchParams: Promise<{ properties?: string }>;
+  searchParams: Promise<{ properties?: string; tab?: string; page?: string }>;
 }
 
 export default async function FinancePage({ searchParams }: FinancePageProps) {
-  const { properties: propertiesRaw } = await searchParams;
+  const { properties: propertiesRaw, tab: tabRaw, page: pageRaw } = await searchParams;
   const session = await auth();
   const userId = session?.user?.id;
   // The dashboard layout redirects unauthenticated visitors.
@@ -167,6 +169,10 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   );
   const isFiltered = propertyFilter !== null;
   const selection = isFiltered ? new Set(propertyFilter) : null;
+
+  // Tab + pagination. Only Income and Expenses paginate; P&L is a summary.
+  const activeTab =
+    tabRaw === "expenses" ? "expenses" : tabRaw === "pnl" ? "pnl" : "income";
   // Records booked to no property ("Not linked"/unassigned) belong to no
   // property, so they drop out whenever a filter is active.
   const inFilter = (propertyId: string | null) =>
@@ -181,6 +187,20 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     (p) => p.status === "paid" && inFilter(p.propertyId),
   );
   const expenseRows = allExpenses.filter((e) => inFilter(e.propertyId));
+
+  const PAGE_SIZE = 20;
+  const incomePages = Math.max(1, Math.ceil(paymentRows.length / PAGE_SIZE));
+  const expensePages = Math.max(1, Math.ceil(expenseRows.length / PAGE_SIZE));
+  const incomePage = Math.min(Math.max(1, Number(pageRaw) || 1), incomePages);
+  const expensePage = Math.min(Math.max(1, Number(pageRaw) || 1), expensePages);
+  const incomeSlice = paymentRows.slice(
+    (incomePage - 1) * PAGE_SIZE,
+    incomePage * PAGE_SIZE,
+  );
+  const expenseSlice = expenseRows.slice(
+    (expensePage - 1) * PAGE_SIZE,
+    expensePage * PAGE_SIZE,
+  );
 
   const totalIncome = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
@@ -352,166 +372,275 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <div>
-            <CardTitle>Income</CardTitle>
-            <CardDescription>
-              Rent and other payments received from tenants.
-            </CardDescription>
-          </div>
-          {canManageAny && <PaymentFormDialog leaseOptions={leaseOptions} />}
-        </CardHeader>
-        <CardContent>
-          {paymentRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {isFiltered
-                ? "No payments recorded for the selected properties."
-                : "No income recorded yet. Use “Add payment” to log rent you’ve received."}
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Lease</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  {canManageAny && (
-                    <TableHead className="text-right">Actions</TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paymentRows.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>{formatDate(p.paidDate)}</TableCell>
-                    <TableCell>
-                      {p.leaseId ? (
-                        <div>
-                          <div>
-                            {p.tenantFirst} {p.tenantLast}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {p.unitName} · {p.propertyName}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Not linked
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>{paymentTypeLabels[p.type]}</TableCell>
-                    <TableCell>
-                      {paymentMethodLabels[p.method]}
-                      {/* GCash portal payments carry their reference number —
-                          the landlord matches it against their GCash history. */}
-                      {p.notes && (
-                        <div className="text-xs text-muted-foreground">
-                          {p.notes}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(p.amount)}
-                    </TableCell>
-                    {canManageAny && (
-                      <TableCell>
-                        {p.userId === userId ||
-                        (p.propertyId != null &&
-                          manageableSet.has(p.propertyId)) ? (
-                          <PaymentRowActions
-                            leaseOptions={leaseOptions}
-                            payment={toPaymentValues(p)}
-                          />
-                        ) : null}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex gap-1 border-b">
+        {(["income", "expenses", "pnl"] as const).map((t) => {
+          const label = t === "income" ? "Income" : t === "expenses" ? "Expenses" : "P&L";
+          const href = `/finance?tab=${t}${propertyFilter ? `&properties=${propertyFilter.join(",")}` : ""}`;
+          return (
+            <Link
+              key={t}
+              href={href}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === t
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <div>
-            <CardTitle>Expenses</CardTitle>
-            <CardDescription>
-              Repairs, taxes, utilities, and other property costs.
-            </CardDescription>
-          </div>
-          {canManageAny && (
-            <ExpenseFormDialog
-              propertyOptions={propertyOptions}
-              unitOptions={unitOptions}
-            />
-          )}
-        </CardHeader>
-        <CardContent>
-          {expenseRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {isFiltered
-                ? "No expenses recorded for the selected properties."
-                : "No expenses recorded yet. Use “Add expense” to start tracking property costs."}
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Property</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  {canManageAny && (
-                    <TableHead className="text-right">Actions</TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {expenseRows.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell>{formatDate(e.expenseDate)}</TableCell>
-                    <TableCell>
-                      <div>{e.propertyName ?? "—"}</div>
-                      {e.unitName && (
-                        <div className="text-xs text-muted-foreground">
-                          {e.unitName}
-                        </div>
+      {activeTab === "income" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <div>
+              <CardTitle>Income</CardTitle>
+              <CardDescription>
+                Rent and other payments received from tenants.
+              </CardDescription>
+            </div>
+            {canManageAny && <PaymentFormDialog leaseOptions={leaseOptions} />}
+          </CardHeader>
+          <CardContent>
+            {paymentRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {isFiltered
+                  ? "No payments recorded for the selected properties."
+                  : "No income recorded yet. Use “Add payment” to log rent you’ve received."}
+              </p>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Lease</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      {canManageAny && (
+                        <TableHead className="text-right">Actions</TableHead>
                       )}
-                    </TableCell>
-                    <TableCell>{expenseCategoryLabels[e.category]}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {e.vendor ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(e.amount)}
-                    </TableCell>
-                    {canManageAny && (
-                      <TableCell>
-                        {e.userId === userId ||
-                        (e.propertyId != null &&
-                          manageableSet.has(e.propertyId)) ? (
-                          <ExpenseRowActions
-                            propertyOptions={propertyOptions}
-                            unitOptions={unitOptions}
-                            expense={toExpenseValues(e)}
-                          />
-                        ) : null}
-                      </TableCell>
-                    )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {incomeSlice.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell>{formatDate(p.paidDate)}</TableCell>
+                        <TableCell>
+                          {p.leaseId ? (
+                            <div>
+                              <div>
+                                {p.tenantFirst} {p.tenantLast}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {p.unitName} · {p.propertyName}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              Not linked
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>{paymentTypeLabels[p.type]}</TableCell>
+                        <TableCell>
+                          {paymentMethodLabels[p.method]}
+                          {p.notes && (
+                            <div className="text-xs text-muted-foreground">
+                              {p.notes}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(p.amount)}
+                        </TableCell>
+                        {canManageAny && (
+                          <TableCell>
+                            {p.userId === userId ||
+                            (p.propertyId != null &&
+                              manageableSet.has(p.propertyId)) ? (
+                              <PaymentRowActions
+                                leaseOptions={leaseOptions}
+                                payment={toPaymentValues(p)}
+                              />
+                            ) : null}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Pagination
+                  page={incomePage}
+                  totalPages={incomePages}
+                  buildHref={(pg) =>
+                    `/finance?tab=income&page=${pg}${propertyFilter ? `&properties=${propertyFilter.join(",")}` : ""}`
+                  }
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "expenses" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <div>
+              <CardTitle>Expenses</CardTitle>
+              <CardDescription>
+                Repairs, taxes, utilities, and other property costs.
+              </CardDescription>
+            </div>
+            {canManageAny && (
+              <ExpenseFormDialog
+                propertyOptions={propertyOptions}
+                unitOptions={unitOptions}
+              />
+            )}
+          </CardHeader>
+          <CardContent>
+            {expenseRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {isFiltered
+                  ? "No expenses recorded for the selected properties."
+                  : "No expenses recorded yet. Use “Add expense” to start tracking property costs."}
+              </p>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Property</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      {canManageAny && (
+                        <TableHead className="text-right">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenseSlice.map((e) => (
+                      <TableRow key={e.id}>
+                        <TableCell>{formatDate(e.expenseDate)}</TableCell>
+                        <TableCell>
+                          <div>{e.propertyName ?? "—"}</div>
+                          {e.unitName && (
+                            <div className="text-xs text-muted-foreground">
+                              {e.unitName}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>{expenseCategoryLabels[e.category]}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {e.vendor ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(e.amount)}
+                        </TableCell>
+                        {canManageAny && (
+                          <TableCell>
+                            {e.userId === userId ||
+                            (e.propertyId != null &&
+                              manageableSet.has(e.propertyId)) ? (
+                              <ExpenseRowActions
+                                propertyOptions={propertyOptions}
+                                unitOptions={unitOptions}
+                                expense={toExpenseValues(e)}
+                              />
+                            ) : null}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Pagination
+                  page={expensePage}
+                  totalPages={expensePages}
+                  buildHref={(pg) =>
+                    `/finance?tab=expenses&page=${pg}${propertyFilter ? `&properties=${propertyFilter.join(",")}` : ""}`
+                  }
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "pnl" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Per-property P&L</CardTitle>
+            <CardDescription>
+              {isFiltered
+                ? "Income minus expenses for the selected properties."
+                : "Income minus expenses for each property. Payments not linked to a lease count as unassigned."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {pnlRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {isFiltered
+                  ? "No income or expenses for the selected properties."
+                  : "Record income and expenses to see per-property profitability."}
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Property</TableHead>
+                    <TableHead className="text-right">Income</TableHead>
+                    <TableHead className="text-right">Expenses</TableHead>
+                    <TableHead className="text-right">Net</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {pnlRows.map((r) => (
+                    <TableRow key={r.key}>
+                      <TableCell>
+                        {r.label === "Unassigned" ? (
+                          <span className="text-muted-foreground">Unassigned</span>
+                        ) : (
+                          r.label
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(r.income)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(r.expense)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(r.net)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(totalIncome)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(totalExpenses)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(net)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
