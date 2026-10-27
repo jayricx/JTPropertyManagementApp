@@ -8,6 +8,7 @@ import { signOut } from "next-auth/react";
 import {
   Banknote,
   Building2,
+  CalendarDays,
   ChartColumnBig,
   FileText,
   Gift,
@@ -33,6 +34,7 @@ const navItems = [
   { href: "/properties", label: "Properties", icon: Building2 },
   { href: "/tenants", label: "Tenants", icon: Users },
   { href: "/leases", label: "Leases", icon: FileText },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/maintenance", label: "Maintenance", icon: Wrench },
   { href: "/reports", label: "Reports", icon: ChartColumnBig },
