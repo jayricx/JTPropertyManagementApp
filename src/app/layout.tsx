@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -77,6 +78,9 @@ export default function RootLayout({
           <InstallPrompt />
           <ServiceWorkerRegister />
           <Toaster position="top-center" richColors />
+          {/* Vercel Web Analytics — page views and referrers, cookie-free. Only
+              active on Vercel deployments; a no-op locally. */}
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>
