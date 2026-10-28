@@ -10,6 +10,7 @@ import { bankDisplayName, isKnownBankCode } from "@/lib/banks";
 import { emailDiagnostics, emailShell, sendEmail } from "@/lib/email";
 import { bankAccountSchema } from "@/lib/validations";
 import { isUuid } from "@/lib/utils";
+import { newFeedToken } from "@/lib/calendar-feed";
 
 /** `ok` lets the form show a saved state after a successful update. */
 export type ActionState = { error?: string; ok?: boolean } | null;
@@ -285,4 +286,24 @@ If you are reading it, sending works.`,
         status: "failed",
         detail: result.reason ?? "The provider refused the message for an unknown reason.",
       };
+}
+
+/**
+ * Issue a fresh calendar-feed token, replacing the old one. Any calendar app
+ * subscribed through a link carrying the old token starts failing on its next
+ * poll � that is the point: this is how a leaked feed link is cut off.
+ */
+export async function regenerateCalendarFeedAction(): Promise<
+  { error?: string; token?: string } | null
+> {
+  const session = await auth();
+  if (!session?.user) return { error: "You must be signed in." };
+
+  const token = newFeedToken();
+  await db
+    .update(users)
+    .set({ calendarFeedToken: token })
+    .where(eq(users.id, session.user.id));
+  revalidatePath("/settings");
+  return { token };
 }

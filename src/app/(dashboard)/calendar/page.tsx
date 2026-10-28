@@ -106,7 +106,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         {(Object.keys(CALENDAR_EVENT_META) as Array<keyof typeof CALENDAR_EVENT_META>).map(
           (type) => (
             <span key={type} className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -117,6 +117,13 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             </span>
           ),
         )}
+        <span className="text-xs text-muted-foreground">
+          Want these on your phone?{" "}
+          <Link href="/settings" className="underline underline-offset-4">
+            Subscribe to the calendar feed
+          </Link>
+          .
+        </span>
       </div>
 
       {/* Month grid — full detail chips on md+, compact dots on phones where

@@ -54,6 +54,13 @@ export const users = pgTable("users", {
    */
   isAdmin: boolean("is_admin").default(false).notNull(),
   /**
+   * The lease-calendar feed token. The ICS feed at /api/calendar/renta-ph.ics
+   * authenticates with this alone — a phone's calendar app can subscribe by
+   * URL and can send no headers, so the token rides in the query string.
+   * Regenerating it cuts off a leaked link without touching anything else.
+   */
+  calendarFeedToken: varchar("calendar_feed_token", { length: 64 }),
+  /**
    * The affiliate whose link brought this account in. Set once, at creation,
    * and never rewritten — attribution is first-touch, so the person who
    * introduced a landlord keeps the credit even if they later click someone

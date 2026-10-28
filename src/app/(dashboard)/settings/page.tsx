@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import {
   BuildingIcon,
+  CalendarDaysIcon,
   KeyRoundIcon,
   LandmarkIcon,
   MailIcon,
@@ -15,6 +16,8 @@ import { accounts, bankAccounts, portfolioMembers, users } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import { googleSignInEnabled } from "@/lib/auth-providers";
 import { emailDiagnostics } from "@/lib/email";
+import { ensureFeedToken } from "@/lib/calendar-feed";
+import { CalendarFeedCard } from "@/components/settings/calendar-feed-card";
 import { EmailTestForm } from "@/components/settings/email-test-form";
 import { BusinessNameForm } from "@/components/settings/business-name-form";
 import { GoogleAccountLink } from "@/components/settings/google-account-link";
@@ -114,6 +117,10 @@ export default async function SettingsPage() {
 
   const googleEnabled = googleSignInEnabled();
   const googleRedirectUrl = `${appUrl()}/api/auth/callback/google`;
+
+  // Minted on first visit, so a fresh account has a working link immediately.
+  const feedToken = await ensureFeedToken(session.user.id);
+  const feedUrl = `${appUrl()}/api/calendar/renta-ph.ics?token=${feedToken}`;
 
   const googleAccount = googleEnabled
     ? await db
@@ -324,6 +331,24 @@ export default async function SettingsPage() {
             linked to it — so a tenant you invited by email can sign in either
             way and still reach the same portal.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDaysIcon className="size-5" /> Calendar feed
+          </CardTitle>
+          <CardDescription>
+            Add this link to the calendar app on your phone (Google Calendar →
+            “Other calendars → From URL”) and your rent due dates, move-ins and
+            lease ends show up beside your own events, updating automatically
+            twice a day. Anyone who has this link can read your schedule, so
+            regenerate it if it ever gets out.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CalendarFeedCard feedUrl={feedUrl} />
         </CardContent>
       </Card>
     </div>

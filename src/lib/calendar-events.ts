@@ -98,21 +98,27 @@ export function buildMonthGrid(month: string): (Date | null)[] {
 }
 
 /**
- * Every calendar event on the active portfolio's leases for one month.
+ * Every calendar event on the given properties between `start` (inclusive)
+ * and `end` (exclusive).
  *
  * Ended leases are excluded — the calendar is for what is happening or about
  * to happen. Rent due dates are the real billing-period boundaries, so a lease
  * due on the 31st simply has no event in months without a 31st... except the
  * clamped February due date, which IS a real boundary and shows on the 28th.
+ *
+ * `withPayments` adds the collected-amount lookup per rent-due event (what
+ * the in-app calendar shows). The ICS feed turns it off — a subscribed
+ * calendar re-polls the URL and never shows paid state prominently anyway,
+ * so the extra query only buys fresher clutter.
  */
-export async function getCalendarEvents(
-  userId: string,
-  month: string,
+export async function getEventsForProperties(
+  propertyIds: string[],
+  start: Date,
+  end: Date,
+  options?: { withPayments?: boolean },
 ): Promise<CalendarEvent[]> {
-  const propertyIds = await accessiblePropertyIds(userId);
   if (propertyIds.length === 0) return [];
-
-  const { start, end } = monthBounds(month);
+  const withPayments = options?.withPayments ?? true;
 
   const rows = await db
     .select({
@@ -145,24 +151,25 @@ export async function getCalendarEvents(
   const leaseIds = rows.map((r) => r.leaseId);
   const windowFrom = new Date(start.getTime() - 35 * 24 * 60 * 60 * 1000);
   const windowTo = new Date(end.getTime() + 35 * 24 * 60 * 60 * 1000);
-  const paidRows = leaseIds.length
-    ? await db
-        .select({
-          leaseId: payments.leaseId,
-          amount: payments.amount,
-          paidDate: payments.paidDate,
-        })
-        .from(payments)
-        .where(
-          and(
-            inArray(payments.leaseId, leaseIds),
-            eq(payments.status, "paid"),
-            eq(payments.type, "rent"),
-            gte(payments.paidDate, windowFrom),
-            lte(payments.paidDate, windowTo),
-          ),
-        )
-    : [];
+  const paidRows =
+    withPayments && leaseIds.length
+      ? await db
+          .select({
+            leaseId: payments.leaseId,
+            amount: payments.amount,
+            paidDate: payments.paidDate,
+          })
+          .from(payments)
+          .where(
+            and(
+              inArray(payments.leaseId, leaseIds),
+              eq(payments.status, "paid"),
+              eq(payments.type, "rent"),
+              gte(payments.paidDate, windowFrom),
+              lte(payments.paidDate, windowTo),
+            ),
+          )
+      : [];
 
   // leaseId → (periodStartKey → collected amount)
   const collected = new Map<string, Map<string, number>>();
@@ -234,6 +241,16 @@ export async function getCalendarEvents(
   }
 
   return events;
+}
+
+/** The in-app calendar: one month of the active portfolio. */
+export async function getCalendarEvents(
+  userId: string,
+  month: string,
+): Promise<CalendarEvent[]> {
+  const propertyIds = await accessiblePropertyIds(userId);
+  const { start, end } = monthBounds(month);
+  return getEventsForProperties(propertyIds, start, end, { withPayments: true });
 }
 
 /** Sort order within one day: money first, then arrivals, then departures. */
