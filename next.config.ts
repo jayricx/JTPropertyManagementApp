@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
       // framing adds a little on top.
       bodySizeLimit: "8mb",
     },
+    // Marks that this app adopted the security-advisory upgrade (16.4.3).
+    agentUpgrade: "security",
   },
   turbopack: {
     rules: {
