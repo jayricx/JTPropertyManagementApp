@@ -5,9 +5,11 @@ import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { DashboardNav } from "@/components/dashboard/dashboard-nav";
+import { DemoBanner } from "@/components/dashboard/demo-banner";
 import { PortfolioSwitcher } from "@/components/dashboard/portfolio-switcher";
 import { userHasTenantProfile } from "@/lib/portal-access";
 import { activePortfolioId, listPortfolioSummaries } from "@/lib/portfolios";
+import { isDemoEmail } from "@/lib/demo";
 import {
   affiliateForUser,
   attributeJustArrivedSignup,
@@ -84,6 +86,7 @@ export default async function DashboardLayout({
       </DashboardNav>
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-7xl px-4 py-8 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-8">
+          {isDemoEmail(account?.email) && <DemoBanner />}
           {children}
         </div>
       </main>

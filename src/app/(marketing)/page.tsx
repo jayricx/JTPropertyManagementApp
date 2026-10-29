@@ -115,7 +115,10 @@ export default function LandingPage() {
               <Button size="lg" render={<Link href="/register" />}>
                 Start free — up to 5 units
               </Button>
-              <Button size="lg" variant="outline" render={<Link href="/pricing" />}>
+              <Button size="lg" variant="outline" render={<Link href="/try-demo" />}>
+                Try the live demo
+              </Button>
+              <Button size="lg" variant="ghost" render={<Link href="/pricing" />}>
                 See plans from ₱199
               </Button>
             </div>
