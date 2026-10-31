@@ -150,6 +150,14 @@ export default function LearnIndex() {
         Deeper reads on the parts of landlording that don&apos;t fit in a
         feature list.
       </p>
+      <p className="mt-4 rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+        Looking for something to <em>use</em> instead of read? The{" "}
+        <Link href="/toolkit" className="font-medium underline underline-offset-4">
+          free landlord toolkit
+        </Link>{" "}
+        has a printable lease contract, checklists and instant calculators —
+        no account needed.
+      </p>
       <div className="mt-6 space-y-4">
         {articles.map((item) => (
           <Link

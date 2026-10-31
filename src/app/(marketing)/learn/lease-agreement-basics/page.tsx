@@ -157,6 +157,10 @@ export default function LeaseAgreementBasicsArticle() {
 
       <p className="mt-10 border-t pt-6 text-sm text-muted-foreground">
         Related:{" "}
+        <Link href="/toolkit/templates/lease-contract" className="underline underline-offset-4">
+          Free printable lease contract template
+        </Link>
+        {" · "}
         <Link href="/learn/handle-unpaid-rent" className="underline underline-offset-4">
           Handling unpaid rent
         </Link>

@@ -272,6 +272,10 @@ then reconcile with the Meralco bill:
         <Link href="/guides" className="underline underline-offset-4">
           rent collection and landlord admin
         </Link>
+        , the{" "}
+        <Link href="/toolkit/calculators/utility-split" className="underline underline-offset-4">
+          free utility split calculator
+        </Link>
         , or read the{" "}
         <Link href="/faq" className="underline underline-offset-4">
           Renta-PH.net FAQ

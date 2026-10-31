@@ -1,0 +1,3 @@
+Date,Unit,Tenant,Type,Method,Reference,Amount (PHP),Status,Notes
+2026-09-03,Unit 301 — 12 Mabini St,Maria Santos,Rent,GCash,4021 8899 0012,12000.00,Paid,September rent
+2026-09-15,Unit 302 — 12 Mabini St,Jose Garcia,Electricity share,Meralco sub-meter,0.145 kWh x PHP 12.50 — submitted 2026-09-14,437.50,Pending,Await verification against Meralco bill

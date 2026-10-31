@@ -138,3 +138,49 @@
     @apply font-sans;
   }
 }
+/* ---------------------------------------------------------------------------
+   Printable documents � the /toolkit templates (lease contract, checklists)
+   print straight from the browser. Pages mark chrome with print:hidden, and
+   everything inside .print-doc is forced to black-on-white so dark mode can
+   never print light text on dark backgrounds.
+--------------------------------------------------------------------------- */
+@media print {
+  body {
+    background: white;
+  }
+
+  .print-doc,
+  .print-doc * {
+    color: black !important;
+    background: transparent !important;
+    border-color: #444 !important;
+  }
+}
+
+/* Fill-in blanks and tick boxes inside .print-doc documents. Visible on
+   screen (light) and forced dark on paper so print keeps them readable. */
+.print-doc .print-blank {
+  display: inline-block;
+  border-bottom: 1px solid var(--border);
+  min-height: 1.4em;
+  vertical-align: baseline;
+}
+
+.print-doc .print-box {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+@media print {
+  .print-doc .print-blank {
+    border-bottom-color: #444 !important;
+  }
+
+  .print-doc .print-box {
+    border-color: #444 !important;
+  }
+}
