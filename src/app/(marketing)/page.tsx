@@ -31,13 +31,13 @@ export const metadata: Metadata = {
 const FEATURES = [
   {
     icon: Landmark,
-    title: "GCash & bank transfer, verified",
+    title: "Rent day becomes a review queue",
     description:
       "Tenants pay from their own GCash or bank app and submit the reference. You confirm it against your history — with an optional photo of the receipt right beside it.",
   },
   {
     icon: Calculator,
-    title: "Per-tenant utility statements",
+    title: "The electric bill, split fairly",
     description:
       "One Meralco meter, many tenants? Sub-meter each unit and give every tenant a statement showing exactly their share of the electric and water bill.",
   },
@@ -49,37 +49,37 @@ const FEATURES = [
   },
   {
     icon: Users,
-    title: "A tenant portal that works",
+    title: "Tenants who answer their own questions",
     description:
       "Invited tenants sign in to see their lease, their balance and their statement, file maintenance issues with photos, and pay rent.",
   },
   {
     icon: Users,
-    title: "Share with a co-owner",
+    title: "Share the building, not the login",
     description:
       "Invite a family member or a property manager to a portfolio. They see the same properties and the same custom fields you do.",
   },
   {
     icon: Wrench,
-    title: "Maintenance with photos",
+    title: "Repairs that don't get lost in chat",
     description:
       "Tenants report leaks and repairs from their phone with pictures attached, and you track each one to resolved.",
   },
   {
     icon: Wallet,
-    title: "Cash flow you can export",
+    title: "Profit per property, on one screen",
     description:
       "Income, expenses and per-property P&L over 3 to 24 months, with a CSV export that matches the screen exactly.",
   },
   {
     icon: FileSignature,
-    title: "Signed leases",
+    title: "Nobody finds out at move-out the lease ended",
     description:
       "Both parties sign on screen with a typed name or a drawn mark. Lease-end alerts go out before a term expires.",
   },
   {
     icon: Zap,
-    title: "Custom fields",
+    title: "Track what your buildings actually need",
     description:
       "Gate codes, parking slots, water tank levels — add the fields your buildings actually need, shared across your portfolio.",
   },
@@ -103,13 +103,14 @@ export default function LandingPage() {
               Built in the Philippines
             </p>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-              Property management for Filipino landlords
+              Know who&apos;s paid, who hasn&apos;t, and what&apos;s owed —
+              without the spreadsheet.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground lg:mx-0">
-              Collect rent the way your tenants actually pay — GCash or bank
-              transfer, with a reference number and a receipt photo you can check.
-              Bill each tenant their exact share of the electric bill. Keep
-              properties, tenants and leases in one place.
+              One statement per tenant with their exact share of the electric
+              bill. Rent paid from their own GCash or bank app, with a
+              reference number you can verify. Your whole portfolio in one
+              place.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start">
               <Button size="lg" render={<Link href="/register" />}>
