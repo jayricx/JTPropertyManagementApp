@@ -10,6 +10,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PLAN_LABELS, PLAN_PRICES, PLAN_TIERS, PLAN_UNIT_LIMITS } from "@/lib/plans";
+import {
+  schemaScriptProps,
+  softwareApplicationSchema,
+} from "@/lib/structured-data";
 import { cn } from "@/lib/utils";
 
 const TIER_FEATURES = {
@@ -120,6 +124,8 @@ export default async function PricingPage() {
           data carries over.
         </p>
       </section>
+
+      <script {...schemaScriptProps(softwareApplicationSchema())} />
     </div>
   );
 }

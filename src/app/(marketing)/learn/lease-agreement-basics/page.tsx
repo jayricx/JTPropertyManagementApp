@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { articleSchema, schemaScriptProps } from "@/lib/structured-data";
+
+const ARTICLE_TITLE = "What every PH landlord needs in a lease agreement";
+const ARTICLE_DESCRIPTION =
+  "The clauses that matter, the ones that don't, and the common mistakes that leave you unprotected — written for landlords managing 1 to 25 units.";
 
 export const metadata: Metadata = {
   title: "What every PH landlord needs in a lease agreement — Renta-PH.net",
-  description:
-    "The clauses that matter, the ones that don't, and the common mistakes that leave you unprotected — written for landlords managing 1 to 25 units.",
+  description: ARTICLE_DESCRIPTION,
 };
 
 export default function LeaseAgreementBasicsArticle() {
@@ -169,6 +173,15 @@ export default function LeaseAgreementBasicsArticle() {
           Collecting rent by GCash
         </Link>
       </p>
+      <script
+        {...schemaScriptProps(
+          articleSchema(
+            "/learn/lease-agreement-basics",
+            ARTICLE_TITLE,
+            ARTICLE_DESCRIPTION,
+          ),
+        )}
+      />
     </article>
   );
 }

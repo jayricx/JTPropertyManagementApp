@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { articleSchema, schemaScriptProps } from "@/lib/structured-data";
+
+const ARTICLE_TITLE = "How to collect rent by GCash (and actually track it)";
+const ARTICLE_DESCRIPTION =
+  "The full playbook for Philippine landlords: setting up your wallet, what to tell tenants, how to verify payments, and the common mistakes that cost landlords money.";
 
 export const metadata: Metadata = {
-  title: "How to collect rent by GCash (and actually track it) — Renta-PH.net",
-  description:
-    "The full playbook for Philippine landlords: setting up your wallet, what to tell tenants, how to verify payments, and the common mistakes that cost landlords money.",
+  title: `${ARTICLE_TITLE} — Renta-PH.net`,
+  description: ARTICLE_DESCRIPTION,
 };
 
 export default function CollectRentGcashFullArticle() {
@@ -159,6 +163,15 @@ export default function CollectRentGcashFullArticle() {
           Splitting utility bills
         </Link>
       </p>
+      <script
+        {...schemaScriptProps(
+          articleSchema(
+            "/learn/collect-rent-gcash-full",
+            ARTICLE_TITLE,
+            ARTICLE_DESCRIPTION,
+          ),
+        )}
+      />
     </article>
   );
 }

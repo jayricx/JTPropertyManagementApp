@@ -1,5 +1,9 @@
 import { MarketingNav } from "@/components/marketing/marketing-nav";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
+import {
+  orgWebsiteSchema,
+  schemaScriptProps,
+} from "@/lib/structured-data";
 
 /**
  * Chrome for every public page: the landing page (moved into this group), the
@@ -13,6 +17,9 @@ export default function MarketingLayout({
 }) {
   return (
     <div className="flex min-h-svh flex-col">
+      {/* Site-level structured data (Organization + WebSite). One copy for
+          every public page — the JSON-LD layer retrieval systems parse. */}
+      <script {...schemaScriptProps(orgWebsiteSchema())} />
       <MarketingNav />
       <main className="flex-1">{children}</main>
       <MarketingFooter />

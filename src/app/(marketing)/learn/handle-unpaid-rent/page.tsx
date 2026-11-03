@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { articleSchema, schemaScriptProps } from "@/lib/structured-data";
+
+const ARTICLE_TITLE = "How to handle a tenant who won't pay rent";
+const ARTICLE_DESCRIPTION =
+  "A step-by-step for Philippine landlords: from the first missed payment to eviction, including what the law says, what you can do, and what you shouldn't.";
 
 export const metadata: Metadata = {
-  title: "How to handle a tenant who won't pay rent — Renta-PH.net",
-  description:
-    "A step-by-step for Philippine landlords: from the first missed payment to eviction, including what the law says, what you can do, and what you shouldn't.",
+  title: `${ARTICLE_TITLE} — Renta-PH.net`,
+  description: ARTICLE_DESCRIPTION,
 };
 
 export default function HandleUnpaidRentArticle() {
@@ -148,6 +152,15 @@ export default function HandleUnpaidRentArticle() {
           Splitting utility bills
         </Link>
       </p>
+      <script
+        {...schemaScriptProps(
+          articleSchema(
+            "/learn/handle-unpaid-rent",
+            ARTICLE_TITLE,
+            ARTICLE_DESCRIPTION,
+          ),
+        )}
+      />
     </article>
   );
 }

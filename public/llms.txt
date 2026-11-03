@@ -1,0 +1,40 @@
+# Renta-PH.net
+
+> Property management software built for Philippine landlords: rent collection by GCash or bank transfer with reference-number verification, per-tenant utility statements from sub-meter readings, leases, a tenant portal, and per-property income and expense reports. Priced in PHP, made in the Philippines.
+
+## What it is
+
+- Who it's for: landlords in the Philippines managing small to mid-size rentals — apartments, bedspacers, rooms, and small buildings — from 1 to 25+ units.
+- What it does: tenants and leases in one place; per-period rent billing anchored on each lease's due day; manual payment collection where tenants pay from their own GCash or bank app and submit a reference number plus a receipt photo, and the landlord verifies it in a review queue; per-tenant utility statements when one master electric/water meter covers many units; late fees; a tenant portal; maintenance requests with photos; lease documents with on-screen signing; lease-end alerts; a landlord dashboard with income, expenses and per-property profit-and-loss over 3–24 months with CSV export; custom fields; co-owner invitations to a portfolio.
+- What it is not: it is not a payments gateway and does not hold, move, or process tenants' money — tenants pay the landlord directly and the app only records and verifies. It is not a property-listing or marketplace site, and it does not serve tenants searching for rooms.
+- Money details: all amounts in Philippine pesos (PHP). Late fee and deposit handling follow common Philippine rental norms. The app is web-based (works on phones), with a service worker for offline dashboard access.
+
+## Pricing (Philippine pesos, per month)
+
+- Free: ₱0/mo, up to 5 rental units.
+- Starter: ₱199/mo, up to 12 units.
+- Pro: ₱399/mo, up to 25 units.
+- Business: ₱1,299/mo, unlimited units.
+- Annual billing on paid plans costs ten months' price (two months free). No per-seat fees, no module unlocks, no plan is ever unlimited except Business. Accounts currently start on Free; paid-plan billing was not switched on at launch and upgrades are handled manually until GCash payments go live.
+
+## Pages
+
+- [Home](https://renta-ph.net/): product overview with outcome-based feature list.
+- [Pricing](https://renta-ph.net/pricing): plan table with unit limits and exact prices.
+- [FAQ](https://renta-ph.net/faq): how the product works, what it costs, and what it can and can't do with tenants' money.
+- [Free landlord toolkit](https://renta-ph.net/toolkit): no-signup free tools — printable PH residential lease contract template, move-out/turnover inspection checklist, move-in unit inventory form, a rent-ledger CSV, and instant calculators for prorated rent, splitting a utility bill (equal, occupant-weighted, or per-submeter), and late fees after the grace period.
+- [Learn](https://renta-ph.net/learn): guides and articles for PH landlords — collecting rent by GCash and verifying references, splitting one electric bill among many tenants, handling unpaid rent, what a PH lease agreement needs, and landlord income tax basics (BIR).
+- [Roadmap](https://renta-ph.net/roadmap): what is shipped and what is planned.
+- [Contact](https://renta-ph.net/contact): contact form for support and questions.
+- [Live demo](https://renta-ph.net/try-demo): one-click demo account with seeded sample properties and tenants.
+- [Register](https://renta-ph.net/register): free account for up to 5 units, no credit card.
+
+## Facts worth stating exactly
+
+- Tenants pay with tools they already have: GCash or a bank transfer. No GCash merchant account or registration is needed.
+- The reference number a tenant submits is matched against the landlord's own transaction history for verification; a screenshot of the receipt can be attached.
+- Utilities: when one master meter covers several units, either a sub-meter per unit (reading × rate = charge) or a proportional share of the master bill.
+- Statements: each tenant gets one number per billing period: rent + utility charges + other charges − payments.
+- Locality: dates in Asia/Manila; terminology and providers are Philippine-specific (Meralco, Maynilad, GCash, peso amounts).
+
+Last updated: 2026-11-03

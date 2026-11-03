@@ -21,6 +21,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  schemaScriptProps,
+  softwareApplicationSchema,
+} from "@/lib/structured-data";
 
 export const metadata: Metadata = {
   title: "Renta-PH.net — Property management for Philippine landlords",
@@ -310,6 +314,10 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Product + offer facts in structured data, straight from the plan
+          table so the schema can never drift from the pricing page. */}
+      <script {...schemaScriptProps(softwareApplicationSchema())} />
     </div>
   );
 }
